@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    # The official image currently publishes amd64 for this tag. Docker Desktop
+    # transparently emulates it on Apple Silicon; Linux amd64 runs it natively.
+    platform: linux/amd64
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-campus_shade}
+      POSTGRES_USER: ${POSTGRES_USER:-campus_shade}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://campus_shade:change-me@db:5432/campus_shade}
+      SAMPLE_DATA_PATH: /data/sample_buildings.geojson
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - api
+    profiles: ["tunnel"]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
