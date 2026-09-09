@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Campus Shade Map</string>
+    <string name="selected_time">선택 시간: %1$02d:%2$02d</string>
+    <string name="loading_shadows">그림자 계산 중…</string>
+    <string name="solar_altitude">태양 고도: %1$.1f°</string>
+    <string name="network_error">서버 연결 실패: %1$s</string>
+    <string name="http_error">서버 오류: HTTP %1$d</string>
+</resources>
+

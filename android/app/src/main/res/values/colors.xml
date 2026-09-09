@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#285943</color>
+    <color name="brand_dark">#173B2C</color>
+    <color name="building_fill">#D6893C</color>
+    <color name="building_stroke">#6B3F18</color>
+    <color name="shadow_fill">#334155</color>
+</resources>
+
