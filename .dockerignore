@@ -1,0 +1,9 @@
+.git
+.env
+.venv
+**/__pycache__
+**/.pytest_cache
+android/.gradle
+android/**/build
+*.pyc
+
