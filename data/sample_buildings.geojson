@@ -1,0 +1,48 @@
+{
+  "type": "FeatureCollection",
+  "name": "cbnu_mvp_buildings",
+  "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:OGC:1.3:CRS84"}},
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {"id": 1, "name": "MVP Building A", "height_m": 18.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45770, 36.62625], [127.45812, 36.62625], [127.45812, 36.62648], [127.45770, 36.62648], [127.45770, 36.62625]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 2, "name": "MVP Building B", "height_m": 24.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45835, 36.62605], [127.45872, 36.62605], [127.45872, 36.62642], [127.45835, 36.62642], [127.45835, 36.62605]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 3, "name": "MVP Building C", "height_m": 15.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45695, 36.62673], [127.45743, 36.62673], [127.45743, 36.62695], [127.45695, 36.62695], [127.45695, 36.62673]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 4, "name": "MVP Building D", "height_m": 30.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45805, 36.62678], [127.45855, 36.62678], [127.45855, 36.62703], [127.45805, 36.62703], [127.45805, 36.62678]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 5, "name": "MVP Building E", "height_m": 12.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45900, 36.62658], [127.45942, 36.62658], [127.45942, 36.62683], [127.45900, 36.62683], [127.45900, 36.62658]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 6, "name": "MVP Building F", "height_m": 21.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45720, 36.62725], [127.45768, 36.62725], [127.45768, 36.62748], [127.45720, 36.62748], [127.45720, 36.62725]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 7, "name": "MVP Building G", "height_m": 27.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45828, 36.62732], [127.45880, 36.62732], [127.45880, 36.62755], [127.45828, 36.62755], [127.45828, 36.62732]]]}
+    },
+    {
+      "type": "Feature",
+      "properties": {"id": 8, "name": "MVP Building H", "height_m": 16.0, "source_geometry": "manual-mvp", "source_height": "manual-estimate"},
+      "geometry": {"type": "Polygon", "coordinates": [[[127.45908, 36.62718], [127.45952, 36.62718], [127.45952, 36.62743], [127.45908, 36.62743], [127.45908, 36.62718]]]}
+    }
+  ]
+}
+
