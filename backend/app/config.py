@@ -6,9 +6,9 @@ from pathlib import Path
 @dataclass(frozen=True)
 class Settings:
     database_url: str | None = os.getenv("DATABASE_URL")
-    sample_data_path: Path = Path(
+    building_data_path: Path = Path(
         os.getenv(
-            "SAMPLE_DATA_PATH",
+            "BUILDING_DATA_PATH",
             Path(__file__).resolve().parents[2] / "data" / "sample_buildings.geojson",
         )
     )
@@ -17,4 +17,3 @@ class Settings:
 
 
 settings = Settings()
-

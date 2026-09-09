@@ -11,8 +11,9 @@ from app.db.repository import BuildingRepository
 async def lifespan(app: FastAPI):
     app.state.buildings = BuildingRepository(
         database_url=settings.database_url,
-        sample_path=settings.sample_data_path,
+        snapshot_path=settings.building_data_path,
     )
+    app.state.buildings.synchronize_snapshot()
     yield
 
 
@@ -22,4 +23,3 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
-

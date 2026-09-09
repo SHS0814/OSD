@@ -9,9 +9,12 @@ class Building:
     id: int
     name: str
     geometry: BaseGeometry
-    height_m: float
+    height_m: float | None
     source_geometry: str
-    source_height: str
+    source_height: str | None
+    osm_type: str
+    osm_id: int
+    vworld_id: str | None
 
     def properties(self) -> dict[str, Any]:
         return {
@@ -20,5 +23,7 @@ class Building:
             "height_m": self.height_m,
             "source_geometry": self.source_geometry,
             "source_height": self.source_height,
+            "osm_type": self.osm_type,
+            "osm_id": self.osm_id,
+            "vworld_id": self.vworld_id,
         }
-
