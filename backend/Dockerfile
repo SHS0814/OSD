@@ -7,7 +7,7 @@ WORKDIR /app
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
-COPY data/sample_buildings.geojson /data/sample_buildings.geojson
+COPY data/cbnu_buildings.geojson /data/cbnu_buildings.geojson
 
 
 EXPOSE 8000

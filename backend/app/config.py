@@ -9,7 +9,7 @@ class Settings:
     building_data_path: Path = Path(
         os.getenv(
             "BUILDING_DATA_PATH",
-            Path(__file__).resolve().parents[2] / "data" / "sample_buildings.geojson",
+            Path(__file__).resolve().parents[2] / "data" / "cbnu_buildings.geojson",
         )
     )
     timezone: str = "Asia/Seoul"

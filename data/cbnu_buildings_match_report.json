@@ -1,0 +1,49 @@
+{
+  "dataset": "cbnu_buildings",
+  "generated_at": "2026-09-09T02:38:59.482545+00:00",
+  "campus": {
+    "osm_type": "relation",
+    "osm_id": 6705106
+  },
+  "sources": {
+    "osm": {
+      "license": "ODbL 1.0",
+      "attribution": "© OpenStreetMap contributors",
+      "snapshot_timestamp": "2026-09-09T02:37:11Z",
+      "returned_building_count": 117
+    },
+    "vworld": {
+      "layer": "LT_C_BLDGINFO",
+      "status": "not_collected",
+      "reason": "VWORLD_API_KEY is not configured",
+      "query_count": 0,
+      "returned_feature_count": 0
+    }
+  },
+  "output": {
+    "building_count": 117,
+    "direct_height_count": 20,
+    "missing_height_count": 97,
+    "rejected_geometry_count": 0
+  },
+  "matching": {
+    "crs": "EPSG:5179",
+    "criteria": {
+      "minimum_overlap_ratio": 0.7,
+      "minimum_area_ratio": 0.5,
+      "maximum_area_ratio": 2.0,
+      "maximum_centroid_distance_m": 15.0,
+      "one_to_one": true
+    },
+    "accepted_count": 0,
+    "unmatched_osm_count": 117,
+    "ambiguous_count": 0,
+    "height_conflict_count": 0,
+    "accepted": [],
+    "ambiguous": [],
+    "low_confidence_candidates": [],
+    "height_conflicts": [],
+    "excluded_abnormal_heights": [],
+    "rejected_geometries": []
+  }
+}
