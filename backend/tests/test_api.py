@@ -14,7 +14,7 @@ def test_buildings_are_geojson() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["type"] == "FeatureCollection"
-    assert len(payload["features"]) == 8
+    assert len(payload["features"]) == 117
 
 
 def test_daytime_shadows_are_geojson() -> None:
@@ -32,7 +32,10 @@ def test_daytime_shadows_are_geojson() -> None:
     assert payload["timezone"] == "Asia/Seoul"
     assert payload["solar"]["altitude"] > 0
     assert payload["shadows"]["type"] == "FeatureCollection"
-    assert len(payload["shadows"]["features"]) == 8
+    assert payload["building_count"] == 117
+    assert payload["shadow_building_count"] == len(payload["shadows"]["features"])
+    assert payload["eligible_building_count"] >= 20
+    assert payload["eligible_building_count"] + payload["skipped_missing_height"] == 117
     properties = payload["shadows"]["features"][0]["properties"]
     assert properties["shadow_length"] > 0
     assert "solar_azimuth" in properties
@@ -51,6 +54,7 @@ def test_night_returns_empty_shadow_collection() -> None:
         )
     assert response.status_code == 200
     assert response.json()["shadows"]["features"] == []
+    assert response.json()["shadow_building_count"] == 0
 
 
 def test_datetime_is_required() -> None:
@@ -59,4 +63,3 @@ def test_datetime_is_required() -> None:
             "/api/shadows", params={"lat": 36.6268, "lon": 127.4583}
         )
     assert response.status_code == 422
-
