@@ -52,9 +52,12 @@ def shadows(
         raise HTTPException(status_code=422, detail=str(error)) from error
 
     solar = calculate_solar_position(when, lat, lon)
+    records = request.app.state.buildings.list_buildings()
+    eligible_records = [building for building in records if building.height_m is not None]
     features: list[dict] = []
     if solar.altitude > 0:
-        for building in request.app.state.buildings.list_buildings():
+        for building in eligible_records:
+            assert building.height_m is not None
             length = calculate_shadow_length(building.height_m, solar.altitude)
             shadow = create_shadow_polygon(
                 to_projected(building.geometry), length, solar.azimuth
@@ -82,6 +85,9 @@ def shadows(
             "altitude": round(solar.altitude, 6),
             "azimuth": round(solar.azimuth, 6),
         },
+        "building_count": len(records),
+        "eligible_building_count": len(eligible_records),
+        "shadow_building_count": len(features),
+        "skipped_missing_height": len(records) - len(eligible_records),
         "shadows": feature_collection(features),
     }
-
