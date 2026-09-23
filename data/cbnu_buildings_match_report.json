@@ -1,6 +1,6 @@
 {
   "dataset": "cbnu_buildings",
-  "generated_at": "2026-09-09T02:38:59.482545+00:00",
+  "generated_at": "2026-09-23T15:09:13.177341+00:00",
   "campus": {
     "osm_type": "relation",
     "osm_id": 6705106
@@ -9,34 +9,50 @@
     "osm": {
       "license": "ODbL 1.0",
       "attribution": "© OpenStreetMap contributors",
-      "snapshot_timestamp": "2026-09-09T02:37:11Z",
-      "returned_building_count": 117
+      "snapshot_timestamp": "2026-09-23T15:07:55Z",
+      "returned_building_count": 258,
+      "outside_campus_count": 101
+    },
+    "filters": {
+      "excluded_building_values": [
+        "greenhouse"
+      ],
+      "excluded_by_building_value": 30,
+      "minimum_footprint_m2": 200.0,
+      "excluded_below_minimum_footprint": 22,
+      "note": "No excluded structure carried a height tag, so the filters remove map clutter without losing a single shadow"
     },
     "vworld": {
-      "layer": "LT_C_BLDGINFO",
-      "status": "not_collected",
-      "reason": "VWORLD_API_KEY is not configured",
+      "layer": null,
+      "status": "not_used",
+      "reason": "VWorld LT_C_BLDGINFO no longer exists in the catalog; the replacement GIS건물통합정보 (dt_d010) carries surveyed heights for only a small share of campus buildings and its cadastral footprints do not align with the OSM outlines used here",
       "query_count": 0,
       "returned_feature_count": 0
     }
   },
   "output": {
-    "building_count": 117,
-    "direct_height_count": 20,
-    "missing_height_count": 97,
+    "building_count": 105,
+    "direct_height_count": 64,
+    "missing_height_count": 41,
     "rejected_geometry_count": 0
+  },
+  "height_availability": {
+    "by_source": {
+      "건축물대장:heit": 53,
+      "OpenStreetMap:height": 9,
+      "건축물대장:heit(단지)": 2
+    },
+    "direct_height": 64,
+    "levels_tag_present": 81,
+    "levels_only_not_converted": 26,
+    "no_height_and_no_levels": 15,
+    "note": "Floor counts from OSM and from the ledger are recorded verbatim and never converted to metres, so a building with only floors still casts no shadow rather than showing an estimate as if it were surveyed"
   },
   "matching": {
     "crs": "EPSG:5179",
-    "criteria": {
-      "minimum_overlap_ratio": 0.7,
-      "minimum_area_ratio": 0.5,
-      "maximum_area_ratio": 2.0,
-      "maximum_centroid_distance_m": 15.0,
-      "one_to_one": true
-    },
+    "criteria": null,
     "accepted_count": 0,
-    "unmatched_osm_count": 117,
+    "unmatched_osm_count": 105,
     "ambiguous_count": 0,
     "height_conflict_count": 0,
     "accepted": [],
