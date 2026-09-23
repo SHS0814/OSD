@@ -27,9 +27,13 @@ PostgreSQL은 Compose 네트워크에만 연결되며 호스트의 `5432` 포트
 ```text
 backend/  FastAPI, 공간·태양 계산 서비스, 테스트
 android/  Kotlin 네이티브 Android 앱
-data/     MVP 건물 GeoJSON
+data/     캠퍼스 경계·건물·건축물대장 스냅샷 (커밋된 고정 데이터)
+scripts/  스냅샷을 다시 만드는 일회성 수집 스크립트
+docs/     조사 기록
 infra/    Docker Compose, PostGIS 초기화
 ```
+
+`scripts/`는 앱이나 API가 실행 중에 호출하지 않습니다. `data/`의 스냅샷을 재생성할 때만 사람이 직접 돌립니다.
 
 ## 빠른 실행
 
@@ -69,14 +73,36 @@ PYTHONPATH=backend pytest backend/tests
 2. JDK 17, Android SDK 35를 선택하고 Gradle Sync를 실행합니다.
 3. Backend를 띄운 뒤 API 26 이상의 에뮬레이터/기기에서 `app`을 실행합니다.
 
-기본 API 주소는 Android 에뮬레이터에서 호스트를 가리키는 `http://10.0.2.2:8000/`입니다. 실제 기기나 Cloudflare URL은 다음처럼 바꿉니다.
+기본 API 주소는 Android 에뮬레이터에서 호스트를 가리키는 `http://10.0.2.2:8000/`입니다. URL은 `/`로 끝나야 합니다.
+
+### 실기기로 테스트할 때
+
+`10.0.2.2`는 에뮬레이터 전용 주소라 실기기에서는 닿지 않습니다. `adb reverse`로 폰의 `localhost`를 개발 PC에 연결하는 방식이 가장 안정적입니다. 공유기나 IP가 바뀌어도 영향을 받지 않고, `localhost`는 이미 cleartext 예외에 들어 있습니다.
+
+```bash
+# 백엔드를 LAN에 바인딩 (기본값 127.0.0.1로는 폰이 못 붙습니다)
+PYTHONPATH=backend uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 폰의 localhost:8000 -> PC의 8000
+adb reverse tcp:8000 tcp:8000
+```
+
+터널은 폰을 다시 연결할 때마다 사라지므로 그때마다 `adb reverse`를 다시 실행해야 합니다.
+
+앱 주소는 Gradle 속성으로 바꿉니다. **Android Studio의 Run 버튼은 `-P` 옵션을 붙일 수 없어 기본값인 `10.0.2.2`로 되돌아갑니다.** 홈 디렉터리의 `~/.gradle/gradle.properties`에 넣어두면 Run 버튼에도 적용되고, 커밋되지 않아 팀원 설정과 충돌하지 않습니다.
+
+```bash
+echo 'API_BASE_URL=http://localhost:8000/' >> ~/.gradle/gradle.properties
+```
+
+CLI로 직접 지정할 수도 있습니다.
 
 ```bash
 cd android
-./gradlew assembleDebug -PAPI_BASE_URL=https://shade-api.example.com/
+./gradlew installDebug -PAPI_BASE_URL=https://shade-api.example.com/
 ```
 
-URL은 `/`로 끝나야 합니다. 로컬 HTTP 예외는 `10.0.2.2`와 `localhost`에만 허용됩니다. 운영에서는 HTTPS Tunnel URL을 사용하십시오.
+로컬 HTTP 예외는 `10.0.2.2`와 `localhost`에만 허용됩니다. debug 빌드에는 `app/src/debug/`의 완화된 정책이 적용되어 임의 호스트로 평문 요청이 가능하고, release 빌드는 엄격한 정책을 유지합니다. 운영에서는 HTTPS Tunnel URL을 사용하십시오.
 
 앱은 충북대학교 좌표로 처음 이동하고 건물 및 현재 날짜의 그림자를 불러옵니다. 06:00–20:00 슬라이더 입력은 400ms debounce 후 다시 계산되며, `현재 시각`은 서울 현지 시각으로 즉시 갱신합니다. 지도 스타일 값은 `MapStyle.kt`에 모았습니다.
 
@@ -121,15 +147,30 @@ PostGIS 원본 geometry는 교환과 지도 렌더링에 적합한 `EPSG:4326`�
 - 지형, 건물 지붕 모양, 나무와 시설물, 주변 건물에 의한 그림자 차폐를 고려하지 않습니다.
 - 벽면의 정밀 3D ray tracing이나 그림자 중첩 강도를 계산하지 않습니다.
 - 낮은 태양 고도에서는 그림자가 매우 길어지며 별도 최대 길이 제한이 없습니다.
-- 직접 meter 높이가 없는 건물에는 층수 환산이나 임의 기본 높이를 적용하지 않으므로 그림자가 표시되지 않습니다.
+- 직접 meter 높이가 없는 건물에는 층수 환산이나 임의 기본 높이를 적용하지 않으므로 그림자가 표시되지 않습니다. 현재 105동 중 41동이 여기에 해당합니다.
 
 ## 데이터와 PostGIS
 
-`data/cbnu_buildings.geojson`은 OpenStreetMap 충북대학교 relation `6705106` 경계 안에서 수집한 실제 건물 외곽선 117개의 고정 스냅샷입니다. geometry와 이름은 OSM을 기준으로 하며 이름은 `name:ko → name → ref → OSM ID` 순서로 선택합니다. 앱 실행 중에는 OSM이나 VWorld API를 호출하지 않습니다.
+`data/`의 파일은 모두 커밋된 고정 스냅샷입니다. **앱과 API는 실행 중에 OSM·VWorld·data.go.kr을 호출하지 않습니다.**
 
-현재 커밋된 스냅샷에는 OSM `height`에 직접 meter 값이 있는 건물 20개만 높이가 있으며 나머지 97개는 `height_m=null`입니다. VWorld `LT_C_BLDGINFO` 결합은 수집 당시 `VWORLD_API_KEY`가 설정되지 않아 수행되지 않았고, 이 상태와 수집·매칭 통계는 `data/cbnu_buildings_match_report.json`에 기록했습니다. 추후 결합할 때는 EPSG:5179에서 면적 중첩률 70% 이상, 면적비 0.5–2.0, 중심점 거리 15m 이하인 일대일 대응만 허용하고 VWorld 직접 `height`를 우선합니다. 층수 환산값은 사용하지 않습니다.
+| 파일 | 내용 |
+|---|---|
+| `cbnu_campus_boundary.geojson` | OSM relation `6705106` 경계 (outer 링만, 87.9 ha) |
+| `cbnu_buildings.geojson` | 경계 안 건물 **105동** |
+| `cbnu_building_ledger.json` | 건축물대장 표제부 132건 |
+| `cbnu_campus_parcels.json` | 대장 조회용 필지(PNU) 24개 |
+| `cbnu_building_aliases.json` | 자동 매칭이 닿지 않는 건물의 수동 대응표 |
+| `cbnu_buildings_match_report.json` | 수집·필터·높이 출처 통계 |
 
-PostGIS 사용 시 API 시작 과정이 스냅샷을 idempotent upsert합니다. 기존 `manual-mvp` 행과 스냅샷에서 사라진 이전 OSM 행은 제거되어 신규 DB와 기존 DB 모두 같은 117개로 수렴합니다.
+지오메트리와 이름은 OSM을 기준으로 하며 이름은 `name:ko → name → ref → OSM ID` 순서로 선택합니다. 온실(`building=greenhouse`) 30동과 200㎡ 미만 22동은 제외했습니다. 제외된 52동 중 높이를 가진 건물은 하나도 없어 그림자는 줄지 않았습니다.
+
+높이는 **국토교통부 건축물대장 표제부**를 우선하고 OSM `height` 태그를 보조로 씁니다. 양쪽에 값이 있는 22동을 비교하면 대장이 더 큰 경우가 19건, OSM 값은 22건 모두 정수인 반면 대장은 1건만 정수입니다. OSM 값이 매퍼의 내림 추정치이기 때문입니다. **층수는 미터로 환산하지 않습니다** — 추정값이 실측값과 구분 없이 지도에 나가는 것을 피하기 위해서입니다.
+
+현재 105동 중 **64동**에 높이가 있습니다(대장 55, OSM 9). 나머지 41동 중 18동은 대장 레코드는 있으나 높이 칸이 비어 있어 공개 API로는 채울 수 없고, 4동은 대장에 값이 있으나 OSM에 건물이 없습니다.
+
+출처별 판단 근거, VWorld API의 좌표계 함정, 매칭 과정에서 발생한 오류와 대응은 저장소에 포함하지 않는 작업 노트 `docs/building-heights.md`에 따로 정리했습니다.
+
+PostGIS 사용 시 API 시작 과정이 스냅샷을 idempotent upsert합니다. 기존 `manual-mvp` 행과 스냅샷에서 사라진 이전 OSM 행은 제거되어 신규 DB와 기존 DB 모두 같은 내용으로 수렴합니다.
 
 OSM 데이터는 [Open Database License(ODbL)](https://www.openstreetmap.org/copyright)를 따르며 Android 지도에 `© OpenStreetMap contributors · ODbL` attribution을 표시합니다.
 
@@ -142,8 +183,9 @@ OSM 데이터는 [Open Database License(ODbL)](https://www.openstreetmap.org/cop
 | `POSTGRES_PASSWORD` | 개발 기본값은 `change-me`; 배포 전 변경 |
 | `DATABASE_URL` | API의 내부 PostgreSQL DSN |
 | `BUILDING_DATA_PATH` | DB 미사용 및 DB 동기화에 사용할 GeoJSON 경로 |
-| `VWORLD_API_KEY` | 일회성 VWorld 스냅샷 수집용 키; 저장소에 커밋 금지 |
+| `VWORLD_API_KEY` | `scripts/fetch_campus_parcels.py` 전용 키; 저장소에 커밋 금지 |
 | `VWORLD_DOMAIN` | VWorld 키 등록 도메인, 로컬 수집 기본값 `http://localhost` |
+| `DATA_GO_KR_API_KEY` | `scripts/fetch_building_ledger.py`용 공공데이터포털 키(Decoding); 커밋 금지 |
 | `CLOUDFLARE_TUNNEL_TOKEN` | 선택적 Tunnel token; 저장소에 커밋 금지 |
 | `API_BASE_URL` | Android build용 API base URL |
 
@@ -159,12 +201,14 @@ docker compose --env-file .env -f infra/docker-compose.yml --profile tunnel up -
 
 ## 테스트 범위
 
-테스트는 낮/밤 태양 고도, 태양 방위각 범위, 45°에서 20m 높이의 20m 그림자, 반대 방향 벡터, polygon translation/sweep, 건물 및 그림자 GeoJSON API, 야간 빈 응답을 검증합니다. 스냅샷 테스트는 정확히 117개의 유효한 Polygon/MultiPolygon, 중복 없는 OSM ID, 직접 높이 출처와 매칭 리포트 집계를 검사합니다.
+테스트는 낮/밤 태양 고도, 태양 방위각 범위, 45°에서 20m 높이의 20m 그림자, 반대 방향 벡터, polygon translation/sweep, 건물 및 그림자 GeoJSON API, 야간 빈 응답을 검증합니다.
+
+스냅샷 테스트는 105개의 유효한 Polygon/MultiPolygon, 중복 없는 OSM ID, 허용된 높이 출처, 리포트 집계, 전 건물이 캠퍼스 경계 안에 있는지를 검사합니다. **층수가 미터로 환산되지 않았는지도 검증합니다** — 층수만 있는 건물은 `height_m`이 반드시 `null`이어야 합니다.
 
 ## 이후 계획
 
-1. VWorld API 키를 구성해 `LT_C_BLDGINFO` 직접 높이를 공간 매칭한 새 스냅샷 생성
-2. 관측 좌표를 고정 캠퍼스 설정으로 제한하거나 요청 viewport로 필터링
-3. 캐시, 공간 bbox 쿼리, 낮은 고도 최대 길이 정책 추가
-4. 센서/BLE 업로드 모델을 별도 모듈로 추가
+1. 센서/BLE 업로드 모델을 별도 모듈로 추가 (과제 요건)
+2. 높이가 없는 41동 처리 방침 결정 — 층수 환산(26동 추가) 도입 여부, 대장에 값이 있으나 OSM에 건물이 없는 4동의 OSM 기여
+3. 관측 좌표를 고정 캠퍼스 설정으로 제한하거나 요청 viewport로 필터링
+4. 캐시, 공간 bbox 쿼리, 낮은 고도 최대 길이 정책 추가
 5. 실측 기후 정보와 보행 네트워크를 결합한 쾌적 경로 추천
