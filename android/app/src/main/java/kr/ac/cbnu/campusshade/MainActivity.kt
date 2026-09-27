@@ -53,6 +53,7 @@ import org.maplibre.android.style.sources.ImageSource
 import java.io.IOException
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -68,9 +69,10 @@ class MainActivity : AppCompatActivity() {
     private var is3d = true
     private var showHeatmap = true
 
-    // Weather observations only reach yesterday, so shadows and felt temperature
-    // are both shown for the latest date the server has weather for.
-    private var dataDate: LocalDate = LocalDate.now(SEOUL_ZONE).minusDays(1)
+    // Shadows and felt temperature are shown for today when the server keeps its
+    // weather current (API허브), otherwise for the last fully observed day.
+    private var dataDate: LocalDate = LocalDate.now(SEOUL_ZONE)
+    private var latestObservation: LocalDateTime? = null
     private val debounceRequest = Runnable { requestForSelectedTime() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -194,11 +196,13 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun updateDataDateLabel() {
-        binding.dataDateText.text = getString(
-            R.string.data_date,
-            dataDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd")),
-        )
+    private fun updateDataDateLabel(observedAt: LocalDateTime? = null) {
+        val date = dataDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        binding.dataDateText.text = if (observedAt == null) {
+            getString(R.string.data_date, date)
+        } else {
+            getString(R.string.data_date_observed, date, observedAt.format(HOUR_MINUTE))
+        }
     }
 
     private fun installDataLayers(style: Style) {
@@ -252,6 +256,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             source.setCoordinates(heatmap.quad)
             source.setImage(heatmap.bitmap)
+            updateLayerMode()
         }
     }
 
@@ -263,14 +268,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestDataDateThenRefresh() {
-        val yesterday = LocalDate.now(SEOUL_ZONE).minusDays(1)
         fetchJson(
             apiUrl("api/weather/period").build(),
             null,
             onError = { requestForSelectedTime() },
         ) { root ->
-            val latest = LocalDate.parse(root.getString("latest_full_date"))
-            dataDate = if (latest.isBefore(yesterday)) latest else yesterday
+            val latest = OffsetDateTime.parse(root.getString("latest_observation"))
+                .atZoneSameInstant(SEOUL_ZONE).toLocalDateTime()
+            latestObservation = latest
+            val today = LocalDate.now(SEOUL_ZONE)
+            dataDate = if (root.getBoolean("realtime") && latest.toLocalDate() == today) {
+                today
+            } else {
+                LocalDate.parse(root.getString("latest_full_date"))
+            }
             updateDataDateLabel()
             requestForSelectedTime()
         }
@@ -308,8 +319,16 @@ class MainActivity : AppCompatActivity() {
         val url = apiUrl("api/microclimate")
             .addQueryParameter("datetime", selectedDateTime())
             .build()
-        microclimateCall = fetchJson(url, microclimateCall, parse = UtciHeatmap::fromResponse) { root, heatmap ->
+        microclimateCall = fetchJson(
+            url,
+            microclimateCall,
+            onError = { code -> if (code == 404) showNotObservedYet() },
+            parse = UtciHeatmap::fromResponse,
+        ) { root, heatmap ->
             showHeatmap(heatmap)
+            val observedAt = OffsetDateTime.parse(root.getJSONObject("weather").getString("observed_at"))
+                .atZoneSameInstant(SEOUL_ZONE).toLocalDateTime()
+            updateDataDateLabel(observedAt)
             val summary = root.getJSONObject("summary")
             val airTemp = root.getJSONObject("weather").getDouble("air_temp_c")
             val sunUp = root.getJSONObject("solar").getDouble("altitude") > 0
@@ -327,24 +346,34 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // The server answers 404 for an instant more than a few hours past its latest
+    // observation, i.e. later today than has been observed.
+    private fun showNotObservedYet() {
+        mapStyle?.getLayer(MapStyle.HEATMAP_LAYER)?.setProperties(visibility(Property.NONE))
+        binding.statusText.text = latestObservation?.let {
+            getString(R.string.not_observed_yet, it.format(HOUR_MINUTE))
+        } ?: getString(R.string.not_observed_yet_unknown)
+    }
+
     private fun apiUrl(path: String): HttpUrl.Builder =
         (BuildConfig.API_BASE_URL + path).toHttpUrl().newBuilder()
 
     private fun fetchJson(
         url: HttpUrl,
         previous: Call?,
-        onError: (() -> Unit)? = null,
+        onError: ((Int?) -> Unit)? = null,
         onSuccess: (JSONObject) -> Unit,
     ): Call = fetchJson(url, previous, onError, parse = { }) { root, _ -> onSuccess(root) }
 
     /**
      * GET [url] and hand the parsed body to [onSuccess] on the UI thread. [parse]
      * runs on the network thread first, for work such as building a bitmap.
+     * [onError] gets the HTTP status, or null when the request never got one.
      */
     private fun <T> fetchJson(
         url: HttpUrl,
         previous: Call?,
-        onError: (() -> Unit)? = null,
+        onError: ((Int?) -> Unit)? = null,
         parse: (JSONObject) -> T,
         onSuccess: (JSONObject, T) -> Unit,
     ): Call {
@@ -355,7 +384,7 @@ class MainActivity : AppCompatActivity() {
                 if (call.isCanceled()) return
                 runOnUiThread {
                     binding.statusText.text = getString(R.string.network_error, error.localizedMessage)
-                    onError?.invoke()
+                    onError?.invoke(null)
                 }
             }
 
@@ -364,7 +393,7 @@ class MainActivity : AppCompatActivity() {
                     if (!it.isSuccessful) {
                         runOnUiThread {
                             binding.statusText.text = getString(R.string.http_error, it.code)
-                            onError?.invoke()
+                            onError?.invoke(it.code)
                         }
                         return
                     }
@@ -397,6 +426,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private val CAMPUS_CENTER = LatLng(36.6268, 127.4583)
         private val SEOUL_ZONE = ZoneId.of("Asia/Seoul")
+        private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm")
         private const val START_MINUTES = 6 * 60
         private const val END_MINUTES = 20 * 60
         private const val EMPTY_FEATURE_COLLECTION =

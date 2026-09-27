@@ -3,6 +3,9 @@
     <string name="app_name">Campus Shade Map</string>
     <string name="selected_time">선택 시간: %1$02d:%2$02d</string>
     <string name="data_date">%1$s 기상청 청주 관측 기준 · 추정치</string>
+    <string name="data_date_observed">%1$s · 기상청 청주 %2$s 관측 기준 · 추정치</string>
+    <string name="not_observed_yet">아직 관측 전인 시각이에요 (최근 관측 %1$s)</string>
+    <string name="not_observed_yet_unknown">아직 관측 전인 시각이에요</string>
     <string name="loading_shadows">그림자 계산 중…</string>
     <string name="loading_microclimate">체감온도 계산 중…</string>
     <string name="solar_altitude">태양 고도: %1$.1f°</string>
