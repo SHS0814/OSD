@@ -200,6 +200,11 @@ PostGIS 원본 geometry는 교환과 지도 렌더링에 적합한 `EPSG:4326`�
 | `cbnu_buildings_match_report.json` | 수집·필터·높이 출처 통계 |
 | `kma_asos_131_hourly.csv` | 기상청 청주 ASOS(131) 시간자료 11,592시간 (2025-06-01 ~ 2026-09-26) |
 | `kma_asos_131_hourly.meta.json` | 위 자료의 출처·기간·열 설명 |
+| `cbnu_dtm_5m.npz` | 캠퍼스 + 300m 지형 5m 격자. 수치지도 1:5,000 등고선 680개·표고점 5,726개를 삼각망으로 보간 (`scripts/build_terrain.py`) |
+| `cbnu_landcover.geojson` | 환경부 세분류 토지피복지도를 캠퍼스 + 100m로 잘라 표면 유형으로 묶은 것 (`scripts/build_landcover.py`) |
+| `cbnu_street_trees.geojson` | 가로수. 직접 입력하는 파일로 지금은 비어 있음 |
+
+지형은 국토지리정보원이 공개하는 DEM이 90m뿐이라(고해상도는 공개제한) 수치지도로 직접 만들었습니다. 캠퍼스 안 90m 격자 106칸에서 공개DEM과 비교하면 평균 차이 +0.8m, RMSE 2.9m이고(공개DEM 자체 RMSE 6.2m), 캠퍼스 고저차는 49~90m입니다. 수치지도 도엽이 캠퍼스 서쪽 경계에서 끝나서 그 서쪽 여백은 가장자리 값을 연장했습니다. 원본 수치지도·토지피복지도는 `data/raw/`(커밋 제외)에 두고, 받는 방법은 작업 노트 `docs/03-data-collection.md`에 있습니다.
 
 지오메트리와 이름은 OSM을 기준으로 하며 이름은 `name:ko → name → ref → OSM ID` 순서로 선택합니다. 온실(`building=greenhouse`) 30동과 200㎡ 미만 22동은 제외했습니다. 제외된 52동 중 높이를 가진 건물은 하나도 없어 그림자는 줄지 않았습니다.
 
@@ -212,6 +217,20 @@ PostGIS 원본 geometry는 교환과 지도 렌더링에 적합한 `EPSG:4326`�
 PostGIS 사용 시 API 시작 과정이 스냅샷을 idempotent upsert합니다. 기존 `manual-mvp` 행과 스냅샷에서 사라진 이전 OSM 행은 제거되어 신규 DB와 기존 DB 모두 같은 내용으로 수렴합니다.
 
 OSM 데이터는 [Open Database License(ODbL)](https://www.openstreetmap.org/copyright)를 따르며 Android 지도에 `© OpenStreetMap contributors · ODbL` attribution을 표시합니다.
+
+### 데이터 출처와 이용 조건
+
+OSM 외의 데이터는 [공공누리 제1유형(출처표시)](https://www.kogl.or.kr/info/license.do)이거나 이용허락범위에 제한이 없는 공공데이터입니다. 제1유형은 출처를 밝히면 가공·재배포를 포함해 자유롭게 이용할 수 있어, 가공한 결과를 이 저장소에 커밋합니다. 원본은 `data/raw/`에 두고 커밋하지 않습니다.
+
+| 데이터 | 저작권자 | 이용 조건 | 이 저장소의 파일 |
+|---|---|---|---|
+| 지상(종관, ASOS) 시간자료 | 기상청 | 공공누리 제1유형 | `kma_asos_131_hourly.csv` |
+| 수치지도 v2.0 1:5,000 (36706049, 36706059) | 국토교통부 국토지리정보원 | 공공누리 제1유형 | `cbnu_dtm_5m.npz` (등고선·표고점에서 보간) |
+| 공개DEM 90m | 국토교통부 국토지리정보원 | 이용허락범위 제한 없음 | 검증에만 사용, 커밋하지 않음 |
+| 세분류 토지피복지도 2025 | 기후에너지환경부 | 공공누리 제1유형 | `cbnu_landcover.geojson` (캠퍼스로 자르고 분류를 묶음) |
+| 건축물대장 표제부 | 국토교통부 | 이용허락범위 제한 없음 | `cbnu_building_ledger.json` |
+
+토지피복지도는 공개 등급 자료를 온라인 자료신청으로 받았습니다. 메타데이터의 보안 제약은 공개제한 자료에만 해당합니다. 앱 화면 하단에도 `기상청 · 국토지리정보원 · 기후에너지환경부`를 출처로 표시합니다.
 
 ## 환경 변수
 

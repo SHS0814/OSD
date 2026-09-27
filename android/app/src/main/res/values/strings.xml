@@ -18,5 +18,5 @@
     <string name="view_3d">3D 보기</string>
     <string name="show_shadows">그림자</string>
     <string name="show_heatmap">체감온도</string>
-    <string name="attribution">© OpenStreetMap contributors · ODbL · 기상청</string>
+    <string name="attribution">© OpenStreetMap contributors · ODbL · 기상청 · 국토지리정보원 · 기후에너지환경부</string>
 </resources>
