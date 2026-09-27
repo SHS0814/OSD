@@ -5,3 +5,4 @@ shapely==2.1.1
 pyproj==3.7.2
 astral==3.2
 psycopg[binary]==3.2.10
+pythermalcomfort==4.6.0

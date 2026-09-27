@@ -5,7 +5,7 @@ from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import unary_union
 
-from .geometry import iter_polygons
+from .geometry import iter_polygons, to_projected
 
 
 def calculate_shadow_length(building_height_m: float, solar_altitude_deg: float) -> float:
@@ -39,6 +39,24 @@ def _swept_ring(coords: list[tuple[float, float]], dx: float, dy: float) -> list
             )
         )
     return quads
+
+
+def building_shadows(buildings, solar) -> list[tuple[object, float, BaseGeometry]]:
+    """Projected shadow of every building with a height, as (building, length, polygon).
+
+    Empty when the sun is at or below the horizon. Buildings without a surveyed
+    height cast nothing rather than an estimated shadow.
+    """
+    if solar.altitude <= 0:
+        return []
+    shadows = []
+    for building in buildings:
+        if building.height_m is None:
+            continue
+        length = calculate_shadow_length(building.height_m, solar.altitude)
+        polygon = create_shadow_polygon(to_projected(building.geometry), length, solar.azimuth)
+        shadows.append((building, length, polygon))
+    return shadows
 
 
 def create_shadow_polygon(

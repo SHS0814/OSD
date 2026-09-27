@@ -1,0 +1,28 @@
+{
+  "generated_at": "2026-09-27T07:19:34.310348+00:00",
+  "source": "기상청 지상(종관, ASOS) 시간자료 조회서비스 (getWthrDataList)",
+  "station": {
+    "id": "131",
+    "name": "청주"
+  },
+  "period": {
+    "start": "2025-06-01",
+    "end": "2026-09-26"
+  },
+  "hours": 11592,
+  "timezone": "Asia/Seoul",
+  "note": "icsr is the radiation accumulated over the hour ending at tm; blank icsr means no radiation (night) or a missing value",
+  "columns": {
+    "ta": "ta",
+    "hm": "hm",
+    "td": "td",
+    "pv": "pv",
+    "ws": "ws",
+    "wd": "wd",
+    "icsr": "icsr",
+    "ss": "ss",
+    "cloud": "dc10Tca",
+    "ts": "ts"
+  },
+  "hours_with_icsr": 6503
+}

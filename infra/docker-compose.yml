@@ -25,6 +25,8 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://campus_shade:change-me@db:5432/campus_shade}
       BUILDING_DATA_PATH: /data/cbnu_buildings.geojson
+      CAMPUS_BOUNDARY_PATH: /data/cbnu_campus_boundary.geojson
+      WEATHER_DATA_PATH: /data/kma_asos_131_hourly.csv
     depends_on:
       db:
         condition: service_healthy
