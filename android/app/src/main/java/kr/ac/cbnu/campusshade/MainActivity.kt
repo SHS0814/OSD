@@ -15,15 +15,27 @@ import okhttp3.Response
 import org.json.JSONObject
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.expressions.Expression.coalesce
+import org.maplibre.android.style.expressions.Expression.color
+import org.maplibre.android.style.expressions.Expression.eq
+import org.maplibre.android.style.expressions.Expression.get
+import org.maplibre.android.style.expressions.Expression.literal
+import org.maplibre.android.style.expressions.Expression.switchCase
+import org.maplibre.android.style.expressions.Expression.typeOf
+import org.maplibre.android.style.layers.FillExtrusionLayer
 import org.maplibre.android.style.layers.FillLayer
-import org.maplibre.android.style.layers.LineLayer
+import org.maplibre.android.style.layers.Layer
 import org.maplibre.android.style.layers.PropertyFactory.fillColor
+import org.maplibre.android.style.layers.PropertyFactory.fillExtrusionBase
+import org.maplibre.android.style.layers.PropertyFactory.fillExtrusionColor
+import org.maplibre.android.style.layers.PropertyFactory.fillExtrusionHeight
+import org.maplibre.android.style.layers.PropertyFactory.fillExtrusionOpacity
 import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
-import org.maplibre.android.style.layers.PropertyFactory.lineColor
-import org.maplibre.android.style.layers.PropertyFactory.lineWidth
+import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import java.io.IOException
 import java.time.LocalDate
@@ -39,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var mapStyle: Style? = null
     private var requestCall: Call? = null
     private var selectedMinutes = 14 * 60
+    private var is3d = true
     private val debounceRequest = Runnable { requestShadows() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,6 +68,7 @@ class MainActivity : AppCompatActivity() {
             mapLibreMap.cameraPosition = CameraPosition.Builder()
                 .target(CAMPUS_CENTER)
                 .zoom(16.2)
+                .tilt(MapStyle.TILT_3D)
                 .build()
             mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.BASE_STYLE_URL)) { style ->
                 mapStyle = style
@@ -79,6 +93,19 @@ class MainActivity : AppCompatActivity() {
             override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
         })
         binding.nowButton.setOnClickListener { setToCurrentTime(requestImmediately = true) }
+        binding.viewModeButton.setOnClickListener { toggleViewMode() }
+        updateViewModeButton()
+    }
+
+    private fun toggleViewMode() {
+        is3d = !is3d
+        val tilt = if (is3d) MapStyle.TILT_3D else 0.0
+        map?.animateCamera(CameraUpdateFactory.tiltTo(tilt), 600)
+        updateViewModeButton()
+    }
+
+    private fun updateViewModeButton() {
+        binding.viewModeButton.setText(if (is3d) R.string.view_2d else R.string.view_3d)
     }
 
     private fun setToCurrentTime(requestImmediately: Boolean) {
@@ -98,26 +125,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun installDataLayers(style: Style) {
-        style.addSource(GeoJsonSource(MapStyle.BUILDING_SOURCE, EMPTY_FEATURE_COLLECTION))
-        style.addLayer(
-            FillLayer(MapStyle.BUILDING_LAYER, MapStyle.BUILDING_SOURCE).withProperties(
-                fillColor(MapStyle.buildingFillColor),
-                fillOpacity(MapStyle.BUILDING_OPACITY),
-            )
-        )
-        style.addLayer(
-            LineLayer(MapStyle.BUILDING_OUTLINE_LAYER, MapStyle.BUILDING_SOURCE).withProperties(
-                lineColor(MapStyle.buildingStrokeColor),
-                lineWidth(1.4f),
-            )
-        )
+        // 그림자는 바닥에 깔고 건물은 그 위로 세운다. 둘 다 기본 지도의 라벨 아래에 둔다.
         style.addSource(GeoJsonSource(MapStyle.SHADOW_SOURCE, EMPTY_FEATURE_COLLECTION))
-        style.addLayer(
+        addBelowLabels(
+            style,
             FillLayer(MapStyle.SHADOW_LAYER, MapStyle.SHADOW_SOURCE).withProperties(
                 fillColor(MapStyle.shadowFillColor),
                 fillOpacity(MapStyle.SHADOW_OPACITY),
             )
         )
+        val hasHeight = eq(typeOf(get("height_m")), literal("number"))
+        style.addSource(GeoJsonSource(MapStyle.BUILDING_SOURCE, EMPTY_FEATURE_COLLECTION))
+        addBelowLabels(
+            style,
+            FillExtrusionLayer(MapStyle.BUILDING_LAYER, MapStyle.BUILDING_SOURCE).withProperties(
+                fillExtrusionHeight(coalesce(get("height_m"), literal(MapStyle.UNKNOWN_HEIGHT_M))),
+                fillExtrusionBase(0f),
+                fillExtrusionColor(
+                    switchCase(
+                        hasHeight, color(MapStyle.buildingFillColor),
+                        color(MapStyle.unknownHeightFillColor),
+                    )
+                ),
+                fillExtrusionOpacity(MapStyle.BUILDING_OPACITY),
+            )
+        )
+    }
+
+    private fun addBelowLabels(style: Style, layer: Layer) {
+        val firstLabel = style.layers.firstOrNull { it is SymbolLayer }
+        if (firstLabel == null) style.addLayer(layer) else style.addLayerBelow(layer, firstLabel.id)
     }
 
     private fun requestBuildings() {

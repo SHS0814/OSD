@@ -6,5 +6,7 @@
     <string name="solar_altitude">태양 고도: %1$.1f°</string>
     <string name="network_error">서버 연결 실패: %1$s</string>
     <string name="http_error">서버 오류: HTTP %1$d</string>
+    <string name="view_2d">2D 보기</string>
+    <string name="view_3d">3D 보기</string>
     <string name="osm_attribution">© OpenStreetMap contributors · ODbL</string>
 </resources>

@@ -72,6 +72,13 @@
                 android:layout_height="wrap_content"
                 android:text="현재 시각" />
 
+            <Button
+                android:id="@+id/viewModeButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/view_2d" />
+
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
