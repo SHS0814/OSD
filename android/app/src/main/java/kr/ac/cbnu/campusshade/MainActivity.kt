@@ -1,5 +1,6 @@
 package kr.ac.cbnu.campusshade
 
+import android.app.DatePickerDialog
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -72,6 +73,10 @@ class MainActivity : AppCompatActivity() {
     // Shadows and felt temperature are shown for today when the server keeps its
     // weather current (API허브), otherwise for the last fully observed day.
     private var dataDate: LocalDate = LocalDate.now(SEOUL_ZONE)
+    // The date "현재 시각" returns to, and the range the date picker allows;
+    // both come from /api/weather/period.
+    private var defaultDate: LocalDate = dataDate
+    private var firstDate: LocalDate? = null
     private var latestObservation: LocalDateTime? = null
     private val debounceRequest = Runnable { requestForSelectedTime() }
 
@@ -122,7 +127,12 @@ class MainActivity : AppCompatActivity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
             override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
         })
-        binding.nowButton.setOnClickListener { setToCurrentTime(requestImmediately = true) }
+        binding.nowButton.setOnClickListener {
+            dataDate = defaultDate
+            updateDataDateLabel()
+            setToCurrentTime(requestImmediately = true)
+        }
+        binding.dateButton.setOnClickListener { pickDate() }
         binding.viewModeButton.setOnClickListener { toggleViewMode() }
         binding.layerModeButton.setOnClickListener { toggleLayerMode() }
         updateViewModeButton()
@@ -180,6 +190,25 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun pickDate() {
+        DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                dataDate = LocalDate.of(year, month + 1, day)
+                updateDataDateLabel()
+                requestForSelectedTime()
+            },
+            dataDate.year,
+            dataDate.monthValue - 1,
+            dataDate.dayOfMonth,
+        ).apply {
+            firstDate?.let { datePicker.minDate = it.toEpochMillis() }
+            datePicker.maxDate = defaultDate.toEpochMillis()
+        }.show()
+    }
+
+    private fun LocalDate.toEpochMillis(): Long = atStartOfDay(SEOUL_ZONE).toInstant().toEpochMilli()
+
     private fun setToCurrentTime(requestImmediately: Boolean) {
         val now = LocalDateTime.now(SEOUL_ZONE)
         selectedMinutes = (now.hour * 60 + now.minute).coerceIn(START_MINUTES, END_MINUTES)
@@ -198,6 +227,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateDataDateLabel(observedAt: LocalDateTime? = null) {
         val date = dataDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        binding.dateButton.text = if (dataDate == LocalDate.now(SEOUL_ZONE)) {
+            getString(R.string.date_today, date)
+        } else {
+            date
+        }
         binding.dataDateText.text = if (observedAt == null) {
             getString(R.string.data_date, date)
         } else {
@@ -276,12 +310,15 @@ class MainActivity : AppCompatActivity() {
             val latest = OffsetDateTime.parse(root.getString("latest_observation"))
                 .atZoneSameInstant(SEOUL_ZONE).toLocalDateTime()
             latestObservation = latest
+            firstDate = OffsetDateTime.parse(root.getString("start"))
+                .atZoneSameInstant(SEOUL_ZONE).toLocalDate()
             val today = LocalDate.now(SEOUL_ZONE)
-            dataDate = if (root.getBoolean("realtime") && latest.toLocalDate() == today) {
+            defaultDate = if (root.getBoolean("realtime") && latest.toLocalDate() == today) {
                 today
             } else {
                 LocalDate.parse(root.getString("latest_full_date"))
             }
+            dataDate = defaultDate
             updateDataDateLabel()
             requestForSelectedTime()
         }

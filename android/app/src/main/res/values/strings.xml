@@ -14,6 +14,8 @@
     <string name="network_error">서버 연결 실패: %1$s</string>
     <string name="http_error">서버 오류: HTTP %1$d</string>
     <string name="now">현재 시각</string>
+    <string name="date_today">%1$s (오늘)</string>
+    <string name="pick_date">날짜 선택</string>
     <string name="view_2d">2D 보기</string>
     <string name="view_3d">3D 보기</string>
     <string name="show_shadows">그림자</string>
