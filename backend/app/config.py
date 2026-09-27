@@ -15,6 +15,9 @@ class Settings:
     building_data_path: Path = _data_path("BUILDING_DATA_PATH", "cbnu_buildings.geojson")
     campus_boundary_path: Path = _data_path("CAMPUS_BOUNDARY_PATH", "cbnu_campus_boundary.geojson")
     weather_data_path: Path = _data_path("WEATHER_DATA_PATH", "kma_asos_131_hourly.csv")
+    # 기상청 API허브 key; without it the weather stays at the committed snapshot.
+    kma_apihub_key: str | None = os.getenv("KMA_APIHUB_KEY") or None
+    weather_refresh_seconds: int = int(os.getenv("WEATHER_REFRESH_SECONDS", "300"))
     timezone: str = "Asia/Seoul"
     projected_crs: str = "EPSG:5179"
     # Point used for the sun position and the extraterrestrial radiation of the

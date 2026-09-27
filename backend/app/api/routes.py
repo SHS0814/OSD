@@ -96,12 +96,14 @@ def _solar_payload(solar) -> dict:
 def weather_period(request: Request) -> dict:
     """Range of the weather snapshot, so a client can pick a date it can ask about."""
     start, end = request.app.state.weather.period
-    # The last date with all 24 hours; the snapshot ends at 23:00 of it.
+    # The last date with all 24 hours observed.
     latest = end.date() if end.hour == 23 else end.date() - timedelta(days=1)
     return {
         "start": start.isoformat(),
         "end": end.isoformat(),
+        "latest_observation": end.isoformat(),
         "latest_full_date": latest.isoformat(),
+        "realtime": settings.kma_apihub_key is not None,
         "station": "청주 ASOS (131)",
     }
 
