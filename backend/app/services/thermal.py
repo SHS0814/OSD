@@ -95,6 +95,7 @@ def mean_radiant_temperature(
     vapour_hpa: float,
     cloud_fraction: float,
     ground_albedo: np.ndarray | float = DEFAULT_GROUND_ALBEDO,
+    ground_heating: np.ndarray | float = GROUND_HEATING_K_PER_W,
 ) -> np.ndarray:
     """Mean radiant temperature in °C.
 
@@ -115,7 +116,7 @@ def mean_radiant_temperature(
 
     # Same form as the ASOS fit above (incident, not absorbed, shortwave), so the
     # fitted coefficient applies unchanged.
-    ground_k = air_k + GROUND_HEATING_K_PER_W * ground_shortwave
+    ground_k = air_k + ground_heating * ground_shortwave
     sky = sky_emissivity(air_temp_c, vapour_hpa, cloud_fraction) * STEFAN_BOLTZMANN * air_k**4
     walls = WALL_EMISSIVITY * STEFAN_BOLTZMANN * air_k**4
     longwave_down = sky_view * sky + (1.0 - sky_view) * walls

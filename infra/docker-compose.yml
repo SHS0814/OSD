@@ -27,6 +27,9 @@ services:
       BUILDING_DATA_PATH: /data/cbnu_buildings.geojson
       CAMPUS_BOUNDARY_PATH: /data/cbnu_campus_boundary.geojson
       WEATHER_DATA_PATH: /data/kma_asos_131_hourly.csv
+      TERRAIN_DATA_PATH: /data/cbnu_dtm_5m.npz
+      LANDCOVER_DATA_PATH: /data/cbnu_landcover.geojson
+      STREET_TREES_DATA_PATH: /data/cbnu_street_trees.geojson
     depends_on:
       db:
         condition: service_healthy

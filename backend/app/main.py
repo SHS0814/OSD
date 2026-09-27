@@ -15,6 +15,8 @@ from app.db.repository import BuildingRepository
 from app.services import kma_hub
 from app.services.microclimate import MicroclimateModel
 from app.services.solar import SEOUL_TZ
+from app.services.surfaces import load_land_cover, load_street_trees
+from app.services.terrain import Terrain
 from app.services.thermal import utci
 from app.services.weather import WeatherStore
 
@@ -63,10 +65,15 @@ async def lifespan(app: FastAPI):
         refresher = asyncio.create_task(
             keep_weather_current(app.state.weather, settings.kma_apihub_key)
         )
-    # Rasterizes buildings and computes the sky view factor once; per-request
-    # work is then only the shadows and the radiation for the requested instant.
+    # Builds the surface model (terrain, buildings, crowns) and the sky view
+    # factor once; per request only the sun rays and radiation are computed.
+    ground, canopies = load_land_cover(settings.landcover_data_path)
     app.state.microclimate = MicroclimateModel(
-        load_campus_boundary(), app.state.buildings.list_buildings()
+        load_campus_boundary(),
+        app.state.buildings.list_buildings(),
+        terrain=Terrain(settings.terrain_data_path),
+        ground=ground,
+        canopies=canopies + load_street_trees(settings.street_trees_data_path),
     )
     # pythermalcomfort JIT-compiles UTCI on first use (~15 s); pay that here
     # rather than on the first user's request.
