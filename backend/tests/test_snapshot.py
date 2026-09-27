@@ -12,7 +12,7 @@ HEIGHT_SOURCES = {
     "건축물대장:heit(단지)",
     "OpenStreetMap:height",
 }
-DIRECT_HEIGHT_COUNT = 64
+DIRECT_HEIGHT_COUNT = 67
 
 
 def load_snapshot() -> list[dict]:

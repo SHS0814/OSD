@@ -28,6 +28,9 @@ ALIASES_PATH = DATA_DIR / "cbnu_building_aliases.json"
 # name and the ledger's 동명칭, which joins them far better than the names do -
 # the ledger calls 학연산공동교육관 "전자정보2관", but both say (E10).
 CODE_PATTERN = re.compile(r"\(([A-Z]{1,2}\d{1,2}(?:-\d{1,2})?)\)")
+# A few ledger records carry the code bare as the whole 동명칭 ("N3-1동", "H13"),
+# without the brackets the pattern above requires.
+BARE_CODE_PATTERN = re.compile(r"([A-Z]{1,2}\d{1,2}(?:-\d{1,2})?)동?")
 
 # Guards for the name fallback, which is only reached when no code matches.
 # A name match is accepted only when the OSM name is contained in the ledger's,
@@ -60,6 +63,14 @@ def building_code(text: str | None) -> str | None:
     return found.group(1) if found else None
 
 
+def _ledger_code(record: dict) -> str | None:
+    code = building_code(record.get("dongNm")) or building_code(record.get("bldNm"))
+    if code:
+        return code
+    bare = BARE_CODE_PATTERN.fullmatch(str(record.get("dongNm") or "").replace(" ", ""))
+    return bare.group(1) if bare else None
+
+
 def _bare_name(text: str | None) -> str:
     return re.sub(r"\([^)]*\)", "", str(text or "")).replace(" ", "")
 
@@ -89,7 +100,7 @@ class HeightResolver:
         self.by_code: dict[str, list[dict]] = {}
         self.by_name: dict[str, list[dict]] = {}
         for record in self.records:
-            code = building_code(record.get("dongNm")) or building_code(record.get("bldNm"))
+            code = _ledger_code(record)
             if code:
                 self.by_code.setdefault(code, []).append(record)
             for name in _name_tokens(record.get("dongNm")) | _name_tokens(record.get("bldNm")):

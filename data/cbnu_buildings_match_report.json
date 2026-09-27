@@ -1,6 +1,6 @@
 {
   "dataset": "cbnu_buildings",
-  "generated_at": "2026-09-23T15:09:13.177341+00:00",
+  "generated_at": "2026-09-24T15:09:36.278678+00:00",
   "campus": {
     "osm_type": "relation",
     "osm_id": 6705106
@@ -9,7 +9,7 @@
     "osm": {
       "license": "ODbL 1.0",
       "attribution": "© OpenStreetMap contributors",
-      "snapshot_timestamp": "2026-09-23T15:07:55Z",
+      "snapshot_timestamp": "2026-09-24T15:08:02Z",
       "returned_building_count": 258,
       "outside_campus_count": 101
     },
@@ -32,20 +32,20 @@
   },
   "output": {
     "building_count": 105,
-    "direct_height_count": 64,
-    "missing_height_count": 41,
+    "direct_height_count": 67,
+    "missing_height_count": 38,
     "rejected_geometry_count": 0
   },
   "height_availability": {
     "by_source": {
-      "건축물대장:heit": 53,
+      "건축물대장:heit": 56,
       "OpenStreetMap:height": 9,
       "건축물대장:heit(단지)": 2
     },
-    "direct_height": 64,
+    "direct_height": 67,
     "levels_tag_present": 81,
-    "levels_only_not_converted": 26,
-    "no_height_and_no_levels": 15,
+    "levels_only_not_converted": 24,
+    "no_height_and_no_levels": 14,
     "note": "Floor counts from OSM and from the ledger are recorded verbatim and never converted to metres, so a building with only floors still casts no shadow rather than showing an estimate as if it were surveyed"
   },
   "matching": {
