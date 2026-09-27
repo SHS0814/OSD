@@ -78,7 +78,8 @@ def test_microclimate_grid_for_a_summer_noon() -> None:
     assert len(grid["corners_wgs84"]) == 4
     assert payload["weather"]["air_temp_c"] == 31.8
     summary = payload["summary"]
-    assert summary["cell_count"] == sum(value is not None for value in payload["utci"])
+    # Cells under buildings are filled for display but kept out of the summary.
+    assert summary["cell_count"] < sum(value is not None for value in payload["utci"])
     # Shaded cells must come out cooler than sunlit ones.
     assert summary["utci_max"] - summary["utci_min"] > 3
     assert 0 < summary["sunlit_share"] < 1

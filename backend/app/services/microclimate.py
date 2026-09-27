@@ -46,6 +46,8 @@ SVF_RANGE_M = 200.0
 
 # An output cell counts as open ground only if most of it is outside buildings.
 MAX_BUILDING_SHARE = 0.5
+# Neighbour-averaging rounds for cells under buildings; 10 covers a 200 m wide block.
+FILL_ROUNDS = 10
 
 
 @dataclass(frozen=True)
@@ -83,8 +85,8 @@ class MicroclimateModel:
         cell_x = west + (np.arange(self.grid.cols) + 0.5) * CELL_M
         cell_y = north - (np.arange(self.grid.rows) + 0.5) * CELL_M
         self.cell_x, self.cell_y = np.meshgrid(cell_x, cell_y)
-        inside = shapely.contains_xy(self.boundary, self.cell_x, self.cell_y)
-        self.valid = inside & (building_share < MAX_BUILDING_SHARE)
+        self.inside = shapely.contains_xy(self.boundary, self.cell_x, self.cell_y)
+        self.valid = self.inside & (building_share < MAX_BUILDING_SHARE)
         self.open_ground = ~footprint
         self.sky_view = np.where(self.valid, self._sky_view_factor(), np.nan)
 
@@ -161,6 +163,7 @@ class MicroclimateModel:
         comfort = utci(air, mrt, weather.wind_ms, humidity)
         mrt = np.where(self.valid, mrt, np.nan)
         comfort = np.where(self.valid, comfort, np.nan)
+        summary = self._summary(comfort, mrt, sunlit)
 
         return {
             "model_version": MODEL_VERSION,
@@ -175,13 +178,43 @@ class MicroclimateModel:
                 "cols": self.grid.cols,
                 "origin": {"x": self.grid.origin_x, "y": self.grid.origin_y},
                 "corners_wgs84": self.grid.corners_wgs84(),
-                "order": "row-major from the north-west corner; null outside campus or inside buildings",
+                "order": "row-major from the north-west corner; null outside campus",
+                "under_buildings": "filled from the surrounding open ground for display; "
+                "not part of the summary",
             },
-            "summary": self._summary(comfort, mrt, sunlit),
-            "utci": _rounded(comfort),
-            "mrt": _rounded(mrt),
-            "sunlit": _rounded(sunlit, digits=2),
+            "summary": summary,
+            "utci": _rounded(self._fill_under_buildings(comfort)),
+            "mrt": _rounded(self._fill_under_buildings(mrt)),
+            "sunlit": _rounded(self._fill_under_buildings(sunlit), digits=2),
         }
+
+    def _fill_under_buildings(self, values: np.ndarray) -> np.ndarray:
+        """Give campus cells covered by buildings the mean of their open neighbours.
+
+        Building outlines do not follow the 10 m grid, so leaving those cells
+        empty shows the base map as a pale seam between each building and the
+        heatmap. The 3D buildings are drawn over these cells anyway; the fill
+        only has to close the seam, so a few rounds of neighbour averaging do.
+        """
+        filled = values.copy()
+        for _ in range(FILL_ROUNDS):
+            missing = self.inside & ~np.isfinite(filled)
+            if not missing.any():
+                break
+            padded = np.pad(filled, 1, constant_values=np.nan)
+            neighbours = np.stack(
+                [
+                    padded[1 + dy : 1 + dy + filled.shape[0], 1 + dx : 1 + dx + filled.shape[1]]
+                    for dy in (-1, 0, 1)
+                    for dx in (-1, 0, 1)
+                    if dy or dx
+                ]
+            )
+            count = np.isfinite(neighbours).sum(axis=0)
+            total = np.nansum(neighbours, axis=0)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                filled = np.where(missing & (count > 0), total / count, filled)
+        return filled
 
     def _summary(self, comfort: np.ndarray, mrt: np.ndarray, sunlit: np.ndarray) -> dict:
         values = comfort[np.isfinite(comfort)]
