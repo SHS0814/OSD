@@ -1,0 +1,190 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "generated_at": "2026-10-06T09:07:45+00:00",
+    "source": "충북대 환경 센서 네트워크 실습 데이터 (data/raw/sensors, 미커밋)",
+    "position": "each sensor's most frequent reported lat/lon"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "id": "sensor 01",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.457722,
+          36.626906
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 01",
+        "team": 2,
+        "start": "2026-09-28T00:00:08+09:00",
+        "end": "2026-10-04T23:59:39+09:00",
+        "readings": 52020,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 76.7
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 04",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.458745,
+          36.626878
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 04",
+        "team": 9,
+        "start": "2026-09-28T00:00:22+09:00",
+        "end": "2026-10-04T23:59:55+09:00",
+        "readings": 41465,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 63.6
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 06",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.45686,
+          36.628191
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 06",
+        "team": 6,
+        "start": "2026-09-28T00:00:00+09:00",
+        "end": "2026-10-04T23:59:57+09:00",
+        "readings": 50135,
+        "temp_ok_pct": 99.9,
+        "co2_ok_pct": 77.5
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 14",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.459296,
+          36.628885
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 14",
+        "team": 5,
+        "start": "2026-09-28T00:00:28+09:00",
+        "end": "2026-10-04T23:59:52+09:00",
+        "readings": 49428,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 85.8
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 15",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.456406,
+          36.62974
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 15",
+        "team": 8,
+        "start": "2026-09-28T00:00:08+09:00",
+        "end": "2026-10-04T23:59:51+09:00",
+        "readings": 40345,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 64.8
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 20",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.455642,
+          36.62536
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 20",
+        "team": 1,
+        "start": "2026-09-28T00:00:07+09:00",
+        "end": "2026-10-04T23:59:54+09:00",
+        "readings": 56962,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 74.6
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 21",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.454431,
+          36.627443
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 21",
+        "team": 4,
+        "start": "2026-09-28T00:00:07+09:00",
+        "end": "2026-10-04T23:59:58+09:00",
+        "readings": 51760,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 72.8
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 26",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.456245,
+          36.626035
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 26",
+        "team": 3,
+        "start": "2026-09-28T00:00:03+09:00",
+        "end": "2026-10-04T23:59:58+09:00",
+        "readings": 54586,
+        "temp_ok_pct": 99.9,
+        "co2_ok_pct": 94.6
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "sensor 33",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          127.454222,
+          36.630931
+        ]
+      },
+      "properties": {
+        "sensor": "sensor 33",
+        "team": 7,
+        "start": "2026-09-28T00:00:07+09:00",
+        "end": "2026-10-04T23:59:53+09:00",
+        "readings": 50247,
+        "temp_ok_pct": 100.0,
+        "co2_ok_pct": 74.8
+      }
+    }
+  ]
+}
