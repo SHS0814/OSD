@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-27T07:19:34.310348+00:00",
+  "generated_at": "2026-10-06T07:18:20.791945+00:00",
   "source": "기상청 지상(종관, ASOS) 시간자료 조회서비스 (getWthrDataList)",
   "station": {
     "id": "131",
@@ -7,9 +7,9 @@
   },
   "period": {
     "start": "2025-06-01",
-    "end": "2026-09-26"
+    "end": "2026-10-05"
   },
-  "hours": 11592,
+  "hours": 11808,
   "timezone": "Asia/Seoul",
   "note": "icsr is the radiation accumulated over the hour ending at tm; blank icsr means no radiation (night) or a missing value",
   "columns": {
@@ -24,5 +24,5 @@
     "cloud": "dc10Tca",
     "ts": "ts"
   },
-  "hours_with_icsr": 6503
+  "hours_with_icsr": 6620
 }
