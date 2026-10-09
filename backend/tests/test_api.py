@@ -17,6 +17,20 @@ def test_buildings_are_geojson() -> None:
     assert len(payload["features"]) == 105
 
 
+def test_sensor_sites_are_geojson_points() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/sensors")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "FeatureCollection"
+    assert payload["features"]
+    for feature in payload["features"]:
+        assert feature["geometry"]["type"] == "Point"
+        lon, lat = feature["geometry"]["coordinates"]
+        assert 127.44 < lon < 127.47 and 36.62 < lat < 36.64
+        assert feature["properties"]["sensor"] == feature["id"]
+
+
 def test_daytime_shadows_are_geojson() -> None:
     with TestClient(app) as client:
         response = client.get(
@@ -108,3 +122,32 @@ def test_weather_period_names_the_latest_full_date() -> None:
         payload = client.get("/api/weather/period").json()
     assert payload["start"].startswith("2025-06-01T00:00")
     assert payload["latest_full_date"] == payload["end"][:10]
+
+
+def test_summer_route_offers_a_shadier_alternative() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/route",
+            params={
+                "from_lat": 36.630931, "from_lon": 127.454222,
+                "to_lat": 36.626035, "to_lon": 127.456245,
+                "datetime": "2026-08-07T15:00:00+09:00",
+            },
+        )
+    assert response.status_code == 200
+    routes = response.json()["routes"]["features"]
+    assert routes[0]["properties"]["kind"] == "shortest"
+    assert len(routes) >= 2
+    shortest, other = routes[0]["properties"], routes[-1]["properties"]
+    assert other["sun_share"] < shortest["sun_share"]
+    assert other["length_m"] <= shortest["length_m"] * 1.3 + 1
+
+
+def test_route_from_off_campus_is_refused() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/route",
+            params={"from_lat": 37.5665, "from_lon": 126.978, "to_lat": 36.626, "to_lon": 127.456,
+                    "datetime": "2026-08-07T15:00:00+09:00"},
+        )
+    assert response.status_code == 422

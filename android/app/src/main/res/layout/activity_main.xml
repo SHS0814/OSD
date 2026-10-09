@@ -4,15 +4,33 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <TextView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/brand"
-        android:padding="16dp"
-        android:text="Campus Shade Map"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:padding="16dp"
+            android:text="Campus Shade Map"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/routeButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/route"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
 
     <org.maplibre.android.maps.MapView
         android:id="@+id/mapView"
@@ -106,6 +124,9 @@
 
             <Button
                 android:id="@+id/nowButton"
+                android:maxLines="1"
+                android:paddingHorizontal="2dp"
+                android:textSize="13sp"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
@@ -113,6 +134,9 @@
 
             <Button
                 android:id="@+id/viewModeButton"
+                android:maxLines="1"
+                android:paddingHorizontal="2dp"
+                android:textSize="13sp"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
@@ -121,11 +145,51 @@
 
             <Button
                 android:id="@+id/layerModeButton"
+                android:maxLines="1"
+                android:paddingHorizontal="2dp"
+                android:textSize="13sp"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
                 android:text="@string/show_shadows" />
+
+            <Button
+                android:id="@+id/baseMapButton"
+                android:maxLines="1"
+                android:paddingHorizontal="2dp"
+                android:textSize="13sp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:layout_weight="1"
+                android:text="@string/show_basemap" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/routePanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/routeText"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/clearRouteButton"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:text="@string/route_clear"
+                android:textSize="12sp" />
         </LinearLayout>
 
         <LinearLayout

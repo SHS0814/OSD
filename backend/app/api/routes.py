@@ -1,10 +1,12 @@
 from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+import numpy as np
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from shapely.geometry import mapping
 
 from app.config import settings
+from app.services import routing, vworld_tiles
 from app.services.geometry import to_wgs84
 from app.services.shadow import building_shadows
 from app.services.solar import calculate_solar_position, parse_requested_datetime
@@ -37,6 +39,76 @@ def buildings(request: Request) -> dict:
             for building in records
         ]
     )
+
+
+@router.get("/api/sensors")
+def sensor_sites(request: Request) -> dict:
+    """Where the campus environment sensors stand; positions only, no readings."""
+    return request.app.state.sensors
+
+
+@router.get("/api/route")
+def walking_route(
+    request: Request,
+    from_lat: Annotated[float, Query(ge=-90, le=90)],
+    from_lon: Annotated[float, Query(ge=-180, le=180)],
+    to_lat: Annotated[float, Query(ge=-90, le=90)],
+    to_lon: Annotated[float, Query(ge=-180, le=180)],
+    datetime_value: Annotated[datetime | None, Query(alias="datetime")] = None,
+    date_value: Annotated[date | None, Query(alias="date")] = None,
+    time_value: Annotated[time | None, Query(alias="time")] = None,
+) -> dict:
+    """Shortest, balanced and coolest walking routes for one instant.
+
+    Balanced and coolest are left out when they coincide with a route already
+    given, and at night, when shade makes no difference.
+    """
+    network = request.app.state.walk_network
+    if network is None:
+        raise HTTPException(status_code=503, detail="walk network is not built (scripts/build_walk_network.py)")
+    try:
+        when = parse_requested_datetime(datetime_value, date_value, time_value)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    try:
+        weather = request.app.state.weather.at(when)
+    except WeatherUnavailable as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    model = request.app.state.microclimate
+    solar = calculate_solar_position(when, settings.campus_latitude, settings.campus_longitude)
+    fields = model.fields(when, solar, weather)
+    utci = network.sample(model.fill_under_buildings(fields.utci), model.grid)
+    sunlit = network.sample(model.fill_under_buildings(fields.sunlit), model.grid)
+    try:
+        start, end = network.snap(from_lon, from_lat), network.snap(to_lon, to_lat)
+        shade_utci = float(np.nanpercentile(fields.utci, routing.SHADE_PERCENTILE))
+        found = network.routes(start, end, utci, shade_utci, daylight=solar.altitude > 0)
+    except routing.RouteUnavailable as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    shortest_m = float(network.length[found[0].edges].sum())
+    return {
+        "datetime": when.isoformat(),
+        "timezone": "Asia/Seoul",
+        "solar": _solar_payload(solar),
+        "air_temp_c": round(weather.air_temp_c, 1),
+        "routes": feature_collection([network.describe(route, utci, sunlit, shortest_m) for route in found]),
+        "note": "보행 속도 1.2 m/s 기준. 시원한 경로는 최단 경로보다 최대 30%, 균형 경로는 15%까지 길어질 수 있습니다.",
+    }
+
+
+@router.get("/api/tiles/satellite/{z}/{x}/{y}.jpeg")
+def satellite_tile(z: int, x: int, y: int) -> Response:
+    """VWorld aerial photo tile for the app's base map (campus area only)."""
+    try:
+        data = vworld_tiles.get_tile(
+            settings.vworld_api_key, settings.vworld_domain, settings.satellite_cache_dir, z, x, y
+        )
+    except vworld_tiles.TileUnavailable as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except OSError as error:
+        raise HTTPException(status_code=502, detail="VWorld tile request failed") from error
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=604800"})
 
 
 @router.get("/api/shadows")

@@ -69,6 +69,16 @@ def test_a_building_shades_the_side_away_from_the_sun() -> None:
     assert sunlit[cell_at(model, 0, 45)] == pytest.approx(1.0)
 
 
+def test_sun_at_points_sees_the_shade_edge_a_cell_mean_blurs() -> None:
+    # A 20 m building's shadow ends 20 m north of its north wall (y = 10 + 20).
+    model = scene(buildings=[(square(0, 0, 10), 20.0)])
+    sun = SolarPosition(altitude=45, azimuth=180)
+    x = np.array([CENTRE.x, CENTRE.x, CENTRE.x])
+    y = CENTRE.y + np.array([25.0, 35.0, -25.0])
+    assert model.sunlit_at(sun, SUMMER, x, y).tolist() == pytest.approx([0.0, 1.0, 1.0])
+    assert model.sunlit_at(SolarPosition(altitude=-5, azimuth=0), SUMMER, x, y).tolist() == [0.0] * 3
+
+
 def test_buildings_and_crowns_lower_the_sky_view() -> None:
     open_sky = scene().sky_view(SUMMER)
     walled = scene(buildings=[(square(0, 25, 10), 30.0)]).sky_view(SUMMER)

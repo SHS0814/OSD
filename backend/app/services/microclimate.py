@@ -25,6 +25,7 @@ outside it can shade the edge.
 from __future__ import annotations
 
 import math
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -55,7 +56,10 @@ from .thermal import (
 from .weather import WeatherSample
 
 MODEL_VERSION = "v1"
-CELL_M = 10.0
+# 4 m keeps a pedestrian-scale picture (a row of trees, the shade strip along a
+# wall) while a response stays ~0.13 MB gzipped; 2 m is ~6.6 MB raw, too slow
+# to parse on a phone for every slider move.
+CELL_M = 4.0
 FINE_M = 2.0
 SUBCELLS = int(CELL_M / FINE_M)
 PAD_M = 100.0
@@ -72,8 +76,9 @@ SVF_RANGE_M = 200.0
 
 # An output cell counts as open ground only if most of it is outside buildings.
 MAX_BUILDING_SHARE = 0.5
-# Neighbour-averaging rounds for cells under buildings; 10 covers a 200 m wide block.
-FILL_ROUNDS = 10
+# Neighbour-averaging rounds for cells under buildings: enough to close a
+# 200 m wide block from both sides.
+FILL_ROUNDS = math.ceil(100.0 / CELL_M)
 
 
 def ray_distances(limit_m: float) -> np.ndarray:
@@ -81,6 +86,18 @@ def ray_distances(limit_m: float) -> np.ndarray:
     near = np.arange(FINE_M, min(limit_m, 60.0) + FINE_M, FINE_M)
     far = np.arange(60.0 + 5.0, limit_m + 5.0, 5.0) if limit_m > 60.0 else np.array([])
     return np.concatenate([near, far])
+
+
+# Instants whose per-cell results are kept (heatmap and routes share them).
+FIELDS_CACHE_SIZE = 8
+
+
+@dataclass(frozen=True)
+class Fields:
+    irradiance: object  # thermal.Irradiance
+    sunlit: np.ndarray
+    mrt: np.ndarray
+    utci: np.ndarray  # NaN outside campus and under buildings
 
 
 @dataclass(frozen=True)
@@ -147,6 +164,8 @@ class MicroclimateModel:
             (open_ground & (self.canopy_kind[self.window] >= 0)).astype(float)
         )
 
+        self._fields_cache: dict = {}
+        self._fields_lock = threading.Lock()
         self._prepare_shadow_targets(open_ground)
         self.sky_view_solid, self.sky_view_canopy = self._sky_view_factors()
 
@@ -215,7 +234,6 @@ class MicroclimateModel:
         self.target_rows = rows + PAD
         self.target_cols = cols + PAD
         self.target_cell = (rows // SUBCELLS) * self.grid.cols + cols // SUBCELLS
-        self.target_z = self.ground[self.target_rows, self.target_cols] + OBSERVER_M
         self.target_count = np.bincount(self.target_cell, minlength=self.valid.size)
 
     def _sky_view_factors(self) -> tuple[np.ndarray, np.ndarray]:
@@ -267,41 +285,63 @@ class MicroclimateModel:
         tau = float(lookup[present].mean()) if present.size else 1.0
         return self.sky_view_canopy + (self.sky_view_solid - self.sky_view_canopy) * tau
 
-    def sunlit_fraction(self, solar: SolarPosition, day) -> np.ndarray:
-        """Direct-sun share of the open ground in each cell: 0 in full shade, 1 in full sun."""
-        if solar.altitude <= 0:
-            return np.where(self.valid, 0.0, np.nan)
+    def _trace_sun(self, rows: np.ndarray, cols: np.ndarray, solar: SolarPosition, day) -> np.ndarray:
+        """Direct-sun share reaching OBSERVER_M above the given fine pixels (sun above the horizon)."""
         lookup = self._transmissivity_lookup(day)
         tan_altitude = math.tan(math.radians(solar.altitude))
         dx = math.sin(math.radians(solar.azimuth)) / FINE_M
         dy = math.cos(math.radians(solar.azimuth)) / FINE_M
         n_rows, n_cols = self.fine_x.shape
 
-        z = self.target_z
+        z = self.ground[rows, cols] + OBSERVER_M
         # A pedestrian under a crown starts in its shade.
-        own = self.canopy_kind[self.target_rows, self.target_cols]
-        transmitted = np.where(
-            self.canopy_top[self.target_rows, self.target_cols] > z, lookup[own], 1.0
-        )
+        own = self.canopy_kind[rows, cols]
+        transmitted = np.where(self.canopy_top[rows, cols] > z, lookup[own], 1.0)
         blocked = np.zeros(z.shape, dtype=bool)
         highest = max(float(self.solid.max()), float(self.canopy_top.max()))
         limit = min(SHADOW_RANGE_M, (highest - float(z.min())) / tan_altitude)
         for distance in ray_distances(limit):
-            row = np.round(self.target_rows - dy * distance).astype(int)
-            col = np.round(self.target_cols + dx * distance).astype(int)
+            row = np.round(rows - dy * distance).astype(int)
+            col = np.round(cols + dx * distance).astype(int)
             np.clip(row, 0, n_rows - 1, out=row)
             np.clip(col, 0, n_cols - 1, out=col)
             ray = z + distance * tan_altitude
             blocked |= self.solid[row, col] > ray
             in_crown = (self.canopy_top[row, col] > ray) & (self.ground[row, col] + CROWN_BASE_M < ray)
             transmitted = np.where(in_crown, np.minimum(transmitted, lookup[self.canopy_kind[row, col]]), transmitted)
-        sun = np.where(blocked, 0.0, transmitted)
+        return np.where(blocked, 0.0, transmitted)
+
+    def fine_pixel(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Fine raster (row, col) of projected points; only meaningful inside the raster."""
+        col = ((np.asarray(x) - self.fine_origin_x) // FINE_M).astype(int)
+        row = ((self.fine_origin_y - np.asarray(y)) // FINE_M).astype(int)
+        return row, col
+
+    def sunlit_at(self, solar: SolarPosition, day, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """Direct-sun share at single points (projected), e.g. sensors, rather than cell means."""
+        if solar.altitude <= 0:
+            return np.zeros(np.shape(x))
+        row, col = self.fine_pixel(x, y)
+        return self._trace_sun(row, col, solar, day)
+
+    def sunlit_fraction(self, solar: SolarPosition, day) -> np.ndarray:
+        """Direct-sun share of the open ground in each cell: 0 in full shade, 1 in full sun."""
+        if solar.altitude <= 0:
+            return np.where(self.valid, 0.0, np.nan)
+        sun = self._trace_sun(self.target_rows, self.target_cols, solar, day)
 
         with np.errstate(invalid="ignore", divide="ignore"):
             per_cell = np.bincount(self.target_cell, weights=sun, minlength=self.valid.size) / self.target_count
         return np.where(self.valid, per_cell.reshape(self.valid.shape), np.nan)
 
-    def compute(self, when: datetime, solar: SolarPosition, weather: WeatherSample) -> dict:
+    def fields(self, when: datetime, solar: SolarPosition, weather: WeatherSample) -> Fields:
+        """Per-cell results for one instant; cached, since the heatmap and a
+        route asked for the same instant would otherwise trace the sun twice."""
+        cache_key = (when, solar.altitude, solar.azimuth, weather)
+        with self._fields_lock:
+            cached = self._fields_cache.get(cache_key)
+        if cached is not None:
+            return cached
         day = when.date()
         sunlit = self.sunlit_fraction(solar, day)
         sky_view = self.sky_view(day)
@@ -322,8 +362,22 @@ class MicroclimateModel:
         )
         humidity = relative_humidity(air, weather.dew_point_c)
         comfort = utci(air, mrt, weather.wind_ms, humidity)
-        mrt = np.where(self.valid, mrt, np.nan)
-        comfort = np.where(self.valid, comfort, np.nan)
+        result = Fields(
+            irradiance=irradiance,
+            sunlit=sunlit,
+            mrt=np.where(self.valid, mrt, np.nan),
+            utci=np.where(self.valid, comfort, np.nan),
+        )
+        with self._fields_lock:
+            while len(self._fields_cache) >= FIELDS_CACHE_SIZE:
+                self._fields_cache.pop(next(iter(self._fields_cache)))
+            self._fields_cache[cache_key] = result
+        return result
+
+    def compute(self, when: datetime, solar: SolarPosition, weather: WeatherSample) -> dict:
+        day = when.date()
+        fields = self.fields(when, solar, weather)
+        irradiance, sunlit, mrt, comfort = fields.irradiance, fields.sunlit, fields.mrt, fields.utci
         summary = self._summary(comfort, mrt, sunlit)
 
         return {
@@ -349,15 +403,15 @@ class MicroclimateModel:
                 "not part of the summary",
             },
             "summary": summary,
-            "utci": _rounded(self._fill_under_buildings(comfort)),
-            "mrt": _rounded(self._fill_under_buildings(mrt)),
-            "sunlit": _rounded(self._fill_under_buildings(sunlit), digits=2),
+            "utci": _rounded(self.fill_under_buildings(comfort)),
+            "mrt": _rounded(self.fill_under_buildings(mrt)),
+            "sunlit": _rounded(self.fill_under_buildings(sunlit), digits=2),
         }
 
-    def _fill_under_buildings(self, values: np.ndarray) -> np.ndarray:
+    def fill_under_buildings(self, values: np.ndarray) -> np.ndarray:
         """Give campus cells covered by buildings the mean of their open neighbours.
 
-        Building outlines do not follow the 10 m grid, so leaving those cells
+        Building outlines do not follow the grid, so leaving those cells
         empty shows the base map as a pale seam between each building and the
         heatmap. The 3D buildings are drawn over these cells anyway; the fill
         only has to close the seam, so a few rounds of neighbour averaging do.
