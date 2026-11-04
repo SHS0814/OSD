@@ -7,3 +7,5 @@ android/.gradle
 android/**/build
 *.pyc
 
+data/raw
+docs
