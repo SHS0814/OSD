@@ -13,8 +13,9 @@ builds it from everything known without sensors:
 - ground albedo and heating from the land cover.
 
 Air temperature, humidity and wind are the 청주 ASOS values for the hour, the
-same everywhere; the sensor correction of air temperature is v2
-(docs/04-data-usage-plan.md).
+same everywhere, unless a WindField (services/wind.py) is attached as
+``wind_field`` and the wind direction is passed to ``fields``; the sensor
+correction of air temperature is v2 (docs/04-data-usage-plan.md).
 
 Geometry is resolved on a fine raster (FINE_M) and reported on coarser output
 cells (CELL_M), so a cell half in shade gets a sunlit fraction of about 0.5.
@@ -164,6 +165,8 @@ class MicroclimateModel:
             (open_ground & (self.canopy_kind[self.window] >= 0)).astype(float)
         )
 
+        # Optional per-cell wind (services/wind.WindField); None keeps ASOS wind everywhere.
+        self.wind_field = None
         self._fields_cache: dict = {}
         self._fields_lock = threading.Lock()
         self._prepare_shadow_targets(open_ground)
@@ -334,10 +337,22 @@ class MicroclimateModel:
             per_cell = np.bincount(self.target_cell, weights=sun, minlength=self.valid.size) / self.target_count
         return np.where(self.valid, per_cell.reshape(self.valid.shape), np.nan)
 
-    def fields(self, when: datetime, solar: SolarPosition, weather: WeatherSample) -> Fields:
+    def fields(
+        self,
+        when: datetime,
+        solar: SolarPosition,
+        weather: WeatherSample,
+        wind_direction_deg: float | None = None,
+    ) -> Fields:
         """Per-cell results for one instant; cached, since the heatmap and a
-        route asked for the same instant would otherwise trace the sun twice."""
-        cache_key = (when, solar.altitude, solar.azimuth, weather)
+        route asked for the same instant would otherwise trace the sun twice.
+
+        With ``wind_field`` attached and a wind direction (ASOS wd, degrees the
+        wind comes from) given, the wind varies by cell; otherwise it is the
+        ASOS speed everywhere."""
+        per_cell_wind = self.wind_field is not None and wind_direction_deg is not None
+        cache_key = (when, solar.altitude, solar.azimuth, weather,
+                     (id(self.wind_field), wind_direction_deg) if per_cell_wind else None)
         with self._fields_lock:
             cached = self._fields_cache.get(cache_key)
         if cached is not None:
@@ -361,7 +376,8 @@ class MicroclimateModel:
             ground_heating=np.nan_to_num(self.heating, nan=SURFACES[DEFAULT_SURFACE].ground_heating),
         )
         humidity = relative_humidity(air, weather.dew_point_c)
-        comfort = utci(air, mrt, weather.wind_ms, humidity)
+        wind = self.wind_field.wind_ms(weather.wind_ms, wind_direction_deg, day) if per_cell_wind else weather.wind_ms
+        comfort = utci(air, mrt, wind, humidity)
         result = Fields(
             irradiance=irradiance,
             sunlit=sunlit,
