@@ -24,6 +24,8 @@ object MapStyle {
     val routeShortestColor: Int = Color.rgb(55, 65, 81)
     val routeBalancedColor: Int = Color.rgb(168, 85, 247)
     val routeCoolestColor: Int = Color.rgb(6, 182, 212)
+    // 추울 때의 햇볕길(cold 모드의 coolest): 따뜻한 주황
+    val routeSunnyColor: Int = Color.rgb(245, 158, 11)
     val routeStartColor: Int = Color.rgb(22, 163, 74)
     val routeEndColor: Int = Color.rgb(220, 38, 38)
     const val SENSOR_SOURCE = "campus-sensors"
@@ -47,6 +49,11 @@ object MapStyle {
     const val SENSOR_STROKE_WIDTH = 2f
     // 기본 지도(openfreemap bright)에 있는 글꼴이어야 라벨이 그려진다.
     val labelFont = arrayOf("Noto Sans Bold")
+
+    // 바람 화살표: 히트맵 색과 섞이지 않게 무채색(짙은 회색 + 흰 테두리)
+    const val WIND_SOURCE = "campus-wind"
+    const val WIND_LAYER = "campus-wind-arrows"
+    const val WIND_ARROW_IMAGE = "wind-arrow"
 
     const val TILT_3D = 55.0
 }

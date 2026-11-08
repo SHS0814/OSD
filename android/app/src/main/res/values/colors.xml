@@ -5,5 +5,15 @@
     <color name="building_fill">#D6893C</color>
     <color name="building_stroke">#6B3F18</color>
     <color name="shadow_fill">#334155</color>
-</resources>
 
+    <!-- 지도 위에 떠 있는 카드·버튼 -->
+    <color name="card_background">#FFFFFF</color>
+    <color name="card_translucent">#E6FFFFFF</color>
+    <color name="text_primary">#1F2937</color>
+    <color name="text_secondary">#5F6368</color>
+    <color name="text_hint">#9AA0A6</color>
+    <color name="divider">#E5E7EB</color>
+    <!-- 지도 위 출발·도착 점과 같은 색 (MapStyle.routeStartColor·routeEndColor) -->
+    <color name="route_start">#16A34A</color>
+    <color name="route_end">#DC2626</color>
+</resources>

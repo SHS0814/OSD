@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="20dp">
+
+    <TextView
+        style="@style/CampusShade.SheetTitle"
+        android:text="@string/map_settings" />
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_view" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/viewModeGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/viewMode3d"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/view_3d" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/viewMode2d"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/view_2d" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_base" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/baseMapGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/baseMapSatellite"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_satellite" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/baseMapNormal"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_basemap" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_layer" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/layerModeGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/layerHeatmap"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_heatmap" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/layerShadow"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_shadows" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_wind" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/windGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/windOff"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/wind_off" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/windOn"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/wind_on" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+</LinearLayout>

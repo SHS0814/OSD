@@ -48,7 +48,8 @@ object UtciPalette {
     private fun lerp(a: Int, b: Int, t: Float) = (a + (b - a) * t).toInt()
 }
 
-class UtciHeatmap(val quad: LatLngQuad, val bitmap: Bitmap) {
+/** The heatmap image, and the [grid] it was drawn from for looking up single points. */
+class UtciHeatmap(val quad: LatLngQuad, val bitmap: Bitmap, val grid: UtciGrid) {
     companion object {
         /** One pixel per grid cell; cells outside campus or inside buildings stay transparent. */
         fun fromResponse(root: JSONObject): UtciHeatmap {
@@ -65,7 +66,13 @@ class UtciHeatmap(val quad: LatLngQuad, val bitmap: Bitmap) {
             val quad = LatLngQuad(
                 corners.latLng(0), corners.latLng(1), corners.latLng(2), corners.latLng(3),
             )
-            return UtciHeatmap(quad, bitmap)
+            val utciGrid = UtciGrid(
+                rows,
+                cols,
+                DoubleArray(rows * cols) { if (values.isNull(it)) Double.NaN else values.getDouble(it) },
+                (0 until 4).map { corners.getJSONArray(it).let { p -> p.getDouble(1) to p.getDouble(0) } },
+            )
+            return UtciHeatmap(quad, bitmap, utciGrid)
         }
 
         private fun JSONArray.latLng(index: Int): LatLng {
