@@ -5,12 +5,17 @@ import android.annotation.SuppressLint
 import android.app.DatePickerDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.PointF
+import android.graphics.RectF
 import android.location.Location
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.LinearLayout
@@ -32,6 +37,8 @@ import androidx.core.widget.doAfterTextChanged
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
+import kr.ac.cbnu.campusshade.databinding.ItemInfoRowBinding
+import kr.ac.cbnu.campusshade.databinding.SheetSensorBinding
 import kr.ac.cbnu.campusshade.databinding.SheetMapSettingsBinding
 import kr.ac.cbnu.campusshade.databinding.SheetTimeBinding
 import okhttp3.Call
@@ -120,6 +127,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 class MainActivity : AppCompatActivity() {
@@ -144,6 +152,11 @@ class MainActivity : AppCompatActivity() {
     private var showSatellite = true
     private var showWind = false
     private var windCall: Call? = null
+    // 센서 위치: 기본으로 보이고, 누르면 정보 시트를 연다.
+    private var showSensors = true
+    private var sensors: List<SensorSite> = emptyList()
+    private lateinit var sensorSheet: SheetSensorBinding
+    private lateinit var sensorSheetDialog: BottomSheetDialog
 
     // 내 위치 체감온도: '지금'의 UTCI 격자와 최근 위치
     private var feltGrid: UtciGrid? = null
@@ -173,6 +186,12 @@ class MainActivity : AppCompatActivity() {
     private var routeStart: Place? = null
     private var routeEnd: Place? = null
     private var routeCall: Call? = null
+    // 출발·도착 핀 끌기: 누른 핀("start"/"end"), 손가락과 핀 중심의 차이, 끌기 전 자리
+    private var dragRole: String? = null
+    private var dragOffset = PointF()
+    private var dragDown = PointF()
+    private var dragMoved = false
+    private var dragOriginal: Place? = null
 
     // 현재 날씨 카드를 눌렀을 때 보여 줄 자세한 내용
     private var weatherDetail: String? = null
@@ -218,6 +237,8 @@ class MainActivity : AppCompatActivity() {
         timeSheetDialog = BottomSheetDialog(this).apply { setContentView(timeSheet.root) }
         mapSettings = SheetMapSettingsBinding.inflate(layoutInflater)
         mapSettingsDialog = BottomSheetDialog(this).apply { setContentView(mapSettings.root) }
+        sensorSheet = SheetSensorBinding.inflate(layoutInflater)
+        sensorSheetDialog = BottomSheetDialog(this).apply { setContentView(sensorSheet.root) }
         onBackPressedDispatcher.addCallback(this, closeOverlaysOnBack)
 
         setToCurrentTime(requestImmediately = false)
@@ -238,7 +259,8 @@ class MainActivity : AppCompatActivity() {
             mapLibreMap.uiSettings.isLogoEnabled = false
             mapLibreMap.uiSettings.isAttributionEnabled = false
             mapLibreMap.addOnMapLongClickListener { point -> hideSearchResults(); pickRoutePoint(point); true }
-            mapLibreMap.addOnMapClickListener { hideSearchResults(); false }
+            mapLibreMap.addOnMapClickListener { point -> onMapTapped(point) }
+            configurePinDragging()
             mapLibreMap.addOnCameraMoveListener { updateCompass() }
             mapLibreMap.addOnCameraIdleListener { updateCompass() }
             mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.BASE_STYLE_URL)) { style ->
@@ -289,6 +311,9 @@ class MainActivity : AppCompatActivity() {
         mapSettings.windGroup.addOnButtonCheckedListener { _, id, checked ->
             if (checked && (id == R.id.windOn) != showWind) toggleWind()
         }
+        mapSettings.sensorGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (checked && (id == R.id.sensorsOn) != showSensors) { showSensors = !showSensors; updateSensors() }
+        }
 
         binding.compassButton.setOnClickListener {
             map?.animateCamera(CameraUpdateFactory.bearingTo(0.0), 400)
@@ -304,6 +329,7 @@ class MainActivity : AppCompatActivity() {
         updateLayerMode()
         updateBaseMapButton()
         updateWindButton()
+        updateSensors()
     }
 
     private fun toggleViewMode() {
@@ -369,6 +395,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateWindButton() {
         mapSettings.windGroup.check(if (showWind) R.id.windOn else R.id.windOff)
+    }
+
+    private fun updateSensors() {
+        mapSettings.sensorGroup.check(if (showSensors) R.id.sensorsOn else R.id.sensorsOff)
+        val visibility = visibility(if (showSensors) Property.VISIBLE else Property.NONE)
+        mapStyle?.getLayer(MapStyle.SENSOR_LAYER)?.setProperties(visibility)
+        mapStyle?.getLayer(MapStyle.SENSOR_LABEL_LAYER)?.setProperties(visibility)
+        if (!showSensors) sensorSheetDialog.dismiss()
     }
 
     // 지도가 돌아간 만큼 바늘을 반대로 돌려 늘 북쪽을 가리키게 한다.
@@ -535,12 +569,22 @@ class MainActivity : AppCompatActivity() {
         suppressSearchWatcher = false
     }
 
-    private fun selectBuilding(building: Building) {
+    /**
+     * Shows [building] in the selection card with [출발][도착]; used for a search
+     * result and for a building tapped on the map. A tapped building is already on
+     * screen, so [moveCamera] is false for it.
+     */
+    private fun selectBuilding(building: Building, moveCamera: Boolean = true) {
         selectedBuilding = building
         hideSearchResults()
         setSearchText(building.label)
-        map?.animateCamera(CameraUpdateFactory.newLatLngZoom(building.latLng(), SELECTED_ZOOM), 700)
-        binding.selectionTitle.text = building.label
+        if (moveCamera) map?.animateCamera(CameraUpdateFactory.newLatLngZoom(building.latLng(), SELECTED_ZOOM), 700)
+        binding.selectionNumber.text = building.number.orEmpty()
+        binding.selectionNumber.visibility = if (building.number == null) View.GONE else View.VISIBLE
+        binding.selectionTitle.text = building.name
+        val details = BuildingSearch.details(building)
+        binding.selectionDetail.text = details.joinToString("\n")
+        binding.selectionDetail.visibility = if (details.isEmpty()) View.GONE else View.VISIBLE
         binding.selectionCard.visibility = View.VISIBLE
         updateBackCallback()
     }
@@ -557,6 +601,138 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun Building.latLng() = LatLng(latitude, longitude)
+
+    // ---- 지도 누르기: 센서 → 건물 ----
+
+    private fun onMapTapped(point: LatLng): Boolean {
+        // 검색 결과가 열려 있으면 첫 탭은 닫기만 한다.
+        if (binding.searchResultsCard.visibility == View.VISIBLE) {
+            hideSearchResults()
+            return true
+        }
+        val map = map ?: return false
+        val screen = map.projection.toScreenLocation(point)
+        sensorAt(screen)?.let { showSensorSheet(it); return true }
+        buildingAt(screen)?.let { selectBuilding(it, moveCamera = false); return true }
+        return false
+    }
+
+    // 센서 점은 작아서 손가락 크기만큼 넓게 찾는다.
+    private fun sensorAt(screen: PointF): SensorSite? {
+        if (!showSensors) return null
+        val map = map ?: return null
+        val slop = SENSOR_TAP_DP * resources.displayMetrics.density
+        val box = RectF(screen.x - slop, screen.y - slop, screen.x + slop, screen.y + slop)
+        return map.queryRenderedFeatures(box, MapStyle.SENSOR_LAYER).asSequence()
+            .mapNotNull { SensorInfo.find(sensors, it.id(), it.getStringProperty("sensor")) }
+            .firstOrNull()
+    }
+
+    private fun buildingAt(screen: PointF): Building? {
+        val map = map ?: return null
+        return map.queryRenderedFeatures(screen, MapStyle.BUILDING_LAYER).asSequence()
+            .mapNotNull { feature ->
+                val id = (if (feature.hasProperty("id")) feature.getNumberProperty("id") else null)?.toLong()
+                    ?: feature.id()?.toDoubleOrNull()?.toLong()
+                val name = if (feature.hasProperty("name")) feature.getStringProperty("name") else null
+                BuildingSearch.findTapped(buildings, id, name)
+            }
+            .firstOrNull()
+    }
+
+    private fun showSensorSheet(site: SensorSite) {
+        sensorSheet.sensorTitle.text = site.name
+        // 측정값 API가 생기면 여기서 SensorReading을 넘기면 된다.
+        fillInfoRows(sensorSheet.sensorReadingRows, SensorInfo.readingRows(null))
+        sensorSheet.sensorReadingNote.visibility = View.VISIBLE
+        fillInfoRows(sensorSheet.sensorSiteRows, SensorInfo.siteRows(site))
+        sensorSheetDialog.show()
+    }
+
+    private fun fillInfoRows(container: ViewGroup, rows: List<Pair<String, String>>) {
+        container.removeAllViews()
+        rows.forEach { (label, value) ->
+            val row = ItemInfoRowBinding.inflate(layoutInflater, container, true)
+            row.infoLabel.text = label
+            row.infoValue.text = value
+        }
+    }
+
+    // ---- 출발·도착 핀 끌기 ----
+
+    /**
+     * A touch that starts on a route pin drags the pin instead of the map; any
+     * other touch goes to the map as before. MapLibre has no draggable marker, so
+     * this sits in front of the map's own gestures.
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun configurePinDragging() {
+        val touchSlop = ViewConfiguration.get(this).scaledTouchSlop
+        binding.mapView.setOnTouchListener { _, event -> onMapTouch(event, touchSlop) }
+    }
+
+    private fun onMapTouch(event: MotionEvent, touchSlop: Int): Boolean {
+        val map = map ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val (role, pin) = pinNear(event.x, event.y) ?: return false
+                dragRole = role
+                dragOffset = PointF(pin.x - event.x, pin.y - event.y)
+                dragDown = PointF(event.x, event.y)
+                dragMoved = false
+                dragOriginal = if (role == "start") routeStart else routeEnd
+                return true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val role = dragRole ?: return false
+                if (!dragMoved && hypot(event.x - dragDown.x, event.y - dragDown.y) < touchSlop) return true
+                dragMoved = true
+                val point = map.projection.fromScreenLocation(PointF(event.x + dragOffset.x, event.y + dragOffset.y))
+                val place = (dragOriginal ?: return true).copy(point = point)
+                if (role == "start") routeStart = place else routeEnd = place
+                showRouteEnds()
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                val role = dragRole ?: return false
+                dragRole = null
+                if (dragMoved) finishPinDrag(role, PointF(event.x + dragOffset.x, event.y + dragOffset.y))
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                val role = dragRole ?: return false
+                dragRole = null
+                if (role == "start") routeStart = dragOriginal else routeEnd = dragOriginal
+                showRouteEnds()
+                return true
+            }
+            // 끄는 동안 두 번째 손가락(확대·회전)도 지도에 넘기지 않는다.
+            else -> return dragRole != null
+        }
+    }
+
+    /** The route pin within reach of a touch at [x], [y] and its screen point, nearest first. */
+    private fun pinNear(x: Float, y: Float): Pair<String, PointF>? {
+        val map = map ?: return null
+        val reach = PIN_TOUCH_DP * resources.displayMetrics.density
+        return listOfNotNull(routeStart?.let { "start" to it }, routeEnd?.let { "end" to it })
+            .map { (role, place) -> role to map.projection.toScreenLocation(place.point) }
+            .map { (role, pin) -> Triple(role, pin, hypot(pin.x - x, pin.y - y)) }
+            .filter { it.third <= reach }
+            .minByOrNull { it.third }
+            ?.let { it.first to it.second }
+    }
+
+    // 놓은 자리가 건물이면 그 이름을, 아니면 "지도에서 고른 곳"으로 부르고 경로를 다시 구한다.
+    private fun finishPinDrag(role: String, screen: PointF) {
+        val map = map ?: return
+        val point = map.projection.fromScreenLocation(screen)
+        val name = buildingAt(screen)?.label ?: getString(R.string.route_map_point)
+        val place = Place(name, point)
+        if (role == "start") routeStart = place else routeEnd = place
+        hideSearchResults()
+        onRouteEndsChanged()
+    }
 
     // ---- 길찾기 ----
 
@@ -938,6 +1114,7 @@ class MainActivity : AppCompatActivity() {
         )
         updateLayerMode()
         updateBaseMap()
+        updateSensors()
     }
 
     private fun addBelowLabels(style: Style, layer: Layer) {
@@ -970,9 +1147,7 @@ class MainActivity : AppCompatActivity() {
         fetchJson(apiUrl("api/buildings").build(), null) { root ->
             mapStyle?.getSourceAs<GeoJsonSource>(MapStyle.BUILDING_SOURCE)
                 ?.setGeoJson(root.toString())
-            buildings = Places.fromBuildings(root)
-                .mapNotNull { BuildingSearch.parse(it.name, it.point.latitude, it.point.longitude) }
-                .distinctBy { it.label }
+            buildings = Places.buildings(root)
             if (binding.searchResultsCard.visibility == View.VISIBLE) refreshSearchResults()
         }
     }
@@ -981,6 +1156,7 @@ class MainActivity : AppCompatActivity() {
         fetchJson(apiUrl("api/sensors").build(), null) { root ->
             mapStyle?.getSourceAs<GeoJsonSource>(MapStyle.SENSOR_SOURCE)
                 ?.setGeoJson(root.toString())
+            sensors = Places.sensors(root)
         }
     }
 
@@ -1198,6 +1374,7 @@ class MainActivity : AppCompatActivity() {
         feltCall?.cancel()
         timeSheetDialog.dismiss()
         mapSettingsDialog.dismiss()
+        sensorSheetDialog.dismiss()
         handler.removeCallbacksAndMessages(null)
         binding.mapView.onDestroy()
         super.onDestroy()
@@ -1215,6 +1392,9 @@ class MainActivity : AppCompatActivity() {
         private val MONTH_DAY_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm")
         private const val SELECTED_ZOOM = 17.5
         private const val MAX_RESULT_ROWS = 6
+        // 출발·도착 핀(반지름 8 + 테두리 3)보다 넉넉히: 이 안에서 누르면 핀을 끈다.
+        private const val PIN_TOUCH_DP = 28f
+        private const val SENSOR_TAP_DP = 14f
         private const val LOCATION_INTERVAL_MS = 5_000L
         private const val FELT_RADIUS_M = 10.0
         private const val NOW_TOLERANCE_MINUTES = 30

@@ -86,4 +86,23 @@
             style="@style/CampusShade.ToggleButton"
             android:text="@string/wind_on" />
     </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_sensors" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/sensorGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/sensorsOff"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/sensors_off" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/sensorsOn"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/sensors_on" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
 </LinearLayout>

@@ -355,7 +355,7 @@
                 </LinearLayout>
             </FrameLayout>
 
-            <!-- 검색에서 고른 건물: 출발 / 도착 -->
+            <!-- 검색이나 지도에서 고른 건물: 번호·이름·높이, 출발 / 도착 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/selectionCard"
                 style="@style/CampusShade.Card"
@@ -379,11 +379,24 @@
                         android:gravity="center_vertical"
                         android:orientation="horizontal">
 
+                        <!-- 검색 결과 줄과 같은 모양: 번호는 크게 브랜드색, 없으면 숨긴다 -->
+                        <TextView
+                            android:id="@+id/selectionNumber"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:textColor="@color/brand"
+                            android:textSize="18sp"
+                            android:textStyle="bold"
+                            android:visibility="gone" />
+
                         <TextView
                             android:id="@+id/selectionTitle"
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="2"
                             android:textColor="@color/text_primary"
                             android:textSize="16sp"
                             android:textStyle="bold" />
@@ -396,6 +409,16 @@
                             android:contentDescription="@string/selection_close"
                             android:src="@drawable/ic_close" />
                     </LinearLayout>
+
+                    <!-- 서버가 아는 것만: 높이와 그 출처. 없으면 숨긴다 -->
+                    <TextView
+                        android:id="@+id/selectionDetail"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="4dp"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
 
                     <LinearLayout
                         android:layout_width="match_parent"

@@ -92,3 +92,52 @@ class BuildingSearchTest {
         assertEquals(listOf("S1-7"), BuildingSearch.search(buildings, "도서관", "S").map { it.number })
     }
 }
+
+class BuildingTapTest {
+    private fun props(id: Long, name: String, height: Double? = null, source: String? = null) = mapOf<String, Any?>(
+        "id" to id, "name" to name, "height_m" to height, "source_height" to source,
+        "source_geometry" to "OpenStreetMap", "osm_type" to "way", "osm_id" to id, "vworld_id" to null,
+    )
+
+    private val buildings = listOf(
+        props(442065034, "자연대 6호관 (S1-6)", 30.3, "건축물대장:heit"),
+        props(442065037, "전자정보 3관 (S4-1)"),
+        props(100, "승리관", 12.0, "OpenStreetMap:height"),
+    ).map { BuildingSearch.fromProperties(it, 36.6, 127.4)!! }
+
+    @Test fun parsesFeatureProperties() {
+        val b = buildings[0]
+        assertEquals("S1-6", b.number)
+        assertEquals("자연대 6호관", b.name)
+        assertEquals(442065034L, b.id)
+        assertEquals(30.3, b.heightM!!, 0.0)
+        assertEquals("건축물대장:heit", b.heightSource)
+        assertNull(buildings[1].heightM)
+        assertNull(BuildingSearch.fromProperties(props(1, "OSM way 1"), 0.0, 0.0))
+        assertNull(BuildingSearch.fromProperties(mapOf("id" to 1), 0.0, 0.0))
+    }
+
+    @Test fun tapMatchesByIdThenName() {
+        assertEquals("S4-1", BuildingSearch.findTapped(buildings, 442065037, null)?.number)
+        // An id not in the list (or none) falls back to the name, as search shows it.
+        assertEquals("S1-6", BuildingSearch.findTapped(buildings, 1, "자연대 6호관 (S1-6)")?.number)
+        assertEquals("승리관", BuildingSearch.findTapped(buildings, null, "승리관")?.label)
+        // Unnamed OSM buildings are not in search, so a tap on one selects nothing.
+        assertNull(BuildingSearch.findTapped(buildings, 9, "OSM way 9"))
+        assertNull(BuildingSearch.findTapped(buildings, null, null))
+    }
+
+    @Test fun detailsOnlyForKnownValues() {
+        assertEquals(listOf("높이 30.3 m · 건축물대장"), BuildingSearch.details(buildings[0]))
+        assertEquals(emptyList<String>(), BuildingSearch.details(buildings[1]))
+        assertEquals(listOf("높이 12 m · OpenStreetMap"), BuildingSearch.details(buildings[2]))
+        assertEquals(listOf("높이 8.5 m"), BuildingSearch.details(Building(null, "x", 0.0, 0.0, heightM = 8.5)))
+    }
+
+    @Test fun heightSourceNames() {
+        assertEquals("건축물대장", BuildingSearch.heightSourceName("건축물대장:heit"))
+        assertEquals("건축물대장(단지)", BuildingSearch.heightSourceName("건축물대장:heit(단지)"))
+        assertEquals("OpenStreetMap", BuildingSearch.heightSourceName("OpenStreetMap:height"))
+        assertEquals("추정", BuildingSearch.heightSourceName("추정"))
+    }
+}

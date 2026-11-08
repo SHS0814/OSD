@@ -41,6 +41,15 @@
     <string name="map_settings_wind">바람</string>
     <string name="wind_off">끔</string>
     <string name="wind_on">바람 화살표</string>
+    <string name="map_settings_sensors">센서</string>
+    <string name="sensors_off">숨김</string>
+    <string name="sensors_on">센서 위치</string>
+
+    <!-- 센서 정보 -->
+    <string name="sensor_subtitle">캠퍼스 환경 센서</string>
+    <string name="sensor_readings">최근 측정값</string>
+    <string name="sensor_readings_pending">측정값은 준비 중이에요. 지금은 위치만 공개돼요.</string>
+    <string name="sensor_site">설치 정보</string>
 
     <!-- 바람 화살표 -->
     <string name="wind_loading">바람 계산 중…</string>

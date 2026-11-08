@@ -4,9 +4,18 @@ import java.util.Locale
 
 /**
  * A campus building for search: its number such as "N13" or "S1-6" (null when the
- * building has none) and its name without the number.
+ * building has none) and its name without the number. [id] is the /api/buildings
+ * feature id, and [heightM] with [heightSource] what the server knows of its height.
  */
-data class Building(val number: String?, val name: String, val latitude: Double, val longitude: Double) {
+data class Building(
+    val number: String?,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val id: Long? = null,
+    val heightM: Double? = null,
+    val heightSource: String? = null,
+) {
     /** "N13 경영대학 본관", or just the name for a building without a number. */
     val label: String get() = if (number == null) name else "$number $name"
     val zone: String get() = BuildingSearch.zoneOf(number)
@@ -37,6 +46,46 @@ object BuildingSearch {
         val number = match?.groupValues?.get(1)
         val name = if (match == null) trimmed else trimmed.removeRange(match.range).replace(SPACES, " ").trim()
         return Building(number, name.ifEmpty { number.orEmpty() }, latitude, longitude)
+    }
+
+    /**
+     * The building from one /api/buildings feature's [properties] (JSON values as
+     * Kotlin ones, null for JSON null), placed at [latitude], [longitude].
+     */
+    fun fromProperties(properties: Map<String, Any?>, latitude: Double, longitude: Double): Building? {
+        val name = properties["name"] as? String ?: return null
+        val building = parse(name, latitude, longitude) ?: return null
+        return building.copy(
+            id = (properties["id"] as? Number)?.toLong(),
+            heightM = (properties["height_m"] as? Number)?.toDouble()?.takeIf { it > 0 },
+            heightSource = (properties["source_height"] as? String)?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /**
+     * The building a tap on the map hit: by the feature's [id] first, then by its
+     * [name] the way search shows it. Null for an unnamed building.
+     */
+    fun findTapped(buildings: List<Building>, id: Long?, name: String?): Building? {
+        if (id != null) buildings.firstOrNull { it.id == id }?.let { return it }
+        val label = name?.let { parse(it, 0.0, 0.0) }?.label ?: return null
+        return buildings.firstOrNull { it.label == label }
+    }
+
+    /** Detail lines for the selection card, only for what is known: "높이 30.3 m · 건축물대장". */
+    fun details(building: Building): List<String> {
+        val height = building.heightM ?: return emptyList()
+        val value = if (height % 1.0 == 0.0) "%.0f".format(Locale.ROOT, height) else "%.1f".format(Locale.ROOT, height)
+        val source = building.heightSource?.let(::heightSourceName)
+        return listOf(if (source == null) "높이 $value m" else "높이 $value m · $source")
+    }
+
+    /** "건축물대장:heit" → "건축물대장", "건축물대장:heit(단지)" → "건축물대장(단지)", "OpenStreetMap:height" → "OpenStreetMap". */
+    fun heightSourceName(source: String): String {
+        val colon = source.indexOf(':')
+        if (colon < 0) return source
+        val note = Regex("""\(.*\)$""").find(source.substring(colon))?.value.orEmpty()
+        return source.substring(0, colon) + note
     }
 
     /** "N", "S" or "E" from the number's letter; [OTHER] for anything else or no number. */
