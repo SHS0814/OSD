@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.wind import K_BG
 
 
 def test_health() -> None:
@@ -204,9 +205,10 @@ def test_microclimate_uses_the_per_cell_wind() -> None:
         solar = calculate_solar_position(when, 36.6282, 127.4567)
         uniform = model.fields(when, solar, weather).utci
         per_cell = model.fields(when, solar, weather, wind_direction_deg=290.0).utci
-    # Sheltered wind on a cold day feels warmer than the open-site ASOS wind.
+    # Sheltered wind on a cold day feels warmer than the open-site ASOS wind;
+    # only passages and corners where the flow speeds up past it feel colder.
     valid = np.isfinite(uniform) & np.isfinite(per_cell)
-    assert np.all(per_cell[valid] >= uniform[valid] - 1e-6)
+    assert np.mean(per_cell[valid] >= uniform[valid] - 1e-6) > 0.95
     assert np.mean(per_cell[valid] - uniform[valid]) > 0.5
     assert payload["summary"]["utci_mean"] == pytest.approx(float(np.nanmean(per_cell)), abs=0.1)
 
@@ -223,13 +225,30 @@ def test_wind_points_for_drawing_arrows() -> None:
     points = payload["features"]
     assert points
     assert len(dense["features"]) > 3 * len(points)
+    assert "질량보존" in payload["note"]
+    deviations = []
     for point in points:
         lon, lat = point["geometry"]["coordinates"]
         assert 127.44 < lon < 127.47 and 36.62 < lat < 36.64
         props = point["properties"]
-        assert 0 < props["factor"] <= 1
-        assert props["speed_ms"] <= payload["wind"]["asos_speed_ms"]
-        assert props["direction_deg"] == 290.0
+        assert 0 < props["factor"] <= 2 * K_BG
+        assert props["speed_ms"] == pytest.approx(3.1 * props["factor"], abs=0.01)
+        assert 0 < props["direction_deg"] <= 360
+        deviations.append(abs((props["direction_deg"] - 290 + 180) % 360 - 180))
+    # The flow turns round the buildings, but mostly keeps to the ASOS direction.
+    assert max(deviations) > 30
+    assert np.median(deviations) < 20
+    # No arrow stands on a cell that is mostly building.
+    from shapely.geometry import MultiPoint
+
+    from app.services.geometry import to_projected
+    from app.services.microclimate import CELL_M
+
+    model = app.state.microclimate
+    projected = to_projected(MultiPoint([p["geometry"]["coordinates"] for p in points])).geoms
+    rows = [int((model.grid.origin_y - p.y) // CELL_M) for p in projected]
+    cols = [int((p.x - model.grid.origin_x) // CELL_M) for p in projected]
+    assert model.valid[rows, cols].all()
     assert too_dense.status_code == 422
 
 

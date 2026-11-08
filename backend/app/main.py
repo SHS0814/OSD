@@ -95,7 +95,8 @@ async def lifespan(app: FastAPI):
     if settings.wind_field_enabled:
         app.state.microclimate.wind_field = WindField(app.state.microclimate)
         if settings.wind_field_precompute:
-            # 16 sectors × leaf on/off, ~19 s; every request then only looks a map up.
+            # Shelter for 16 sectors × leaf on/off (~12-19 s) and the 2D flow
+            # (two sparse solves, ~0.6 s); every request then only combines maps.
             await asyncio.to_thread(app.state.microclimate.wind_field.precompute)
     # pythermalcomfort JIT-compiles UTCI on first use (~15 s); pay that here
     # rather than on the first user's request.

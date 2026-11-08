@@ -13,7 +13,8 @@ builds it from everything known without sensors:
 - ground albedo and heating from the land cover.
 
 Air temperature, humidity and wind are the 청주 ASOS values for the hour, the
-same everywhere, unless a WindField (services/wind.py) is attached as
+same everywhere, unless a WindField (services/wind.py: shelter behind
+obstacles plus a 2D mass-consistent flow round the buildings) is attached as
 ``wind_field`` and the wind direction is passed to ``fields``; the sensor
 correction of air temperature is v2 (docs/04-data-usage-plan.md).
 

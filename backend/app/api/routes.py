@@ -247,7 +247,8 @@ def microclimate(
         "weather": weather.as_dict(),
         **result,
         "note": "추정치입니다. 그림자·천공률·지표면을 반영하고, 기온·습도는 캠퍼스 전체에 같은 기상청 값을, "
-        "바람은 기상청 값을 칸별 차폐로 줄여(추정, 풍속계 검증 없음) 씁니다.",
+        "바람은 기상청 값에 칸별 풍속을 추정해(바람 위쪽 차폐 + 건물을 돌아가는 2D 질량보존 흐름; "
+        "건물 위로 넘는 흐름·후류 역류 미반영, 풍속계 검증 없음) 씁니다.",
     }
 
 
@@ -261,8 +262,13 @@ def wind_arrows(
 ) -> dict:
     """Per-cell wind as points for drawing arrows, every ``step_m`` over open campus ground.
 
-    ``direction_deg`` is where the wind blows *from* (ASOS wd); an arrow points
-    the other way. No points when the wind field is off or the wind is calm.
+    Each point's ``direction_deg`` is where the wind blows *from* at that cell
+    (ASOS convention, north 360) and ``factor`` its speed over the ASOS speed;
+    an arrow points the other way. Both are estimates: a 2D mass-consistent
+    flow round the buildings plus upwind sheltering, without flow over the
+    roofs or reversed flow in a wake, and not checked against an anemometer.
+    No point is placed on a cell that is mostly building. ``wind`` holds the
+    ASOS values. No points when the wind field is off or the wind is calm.
     """
     try:
         when = parse_requested_datetime(datetime_value, date_value, time_value)
@@ -290,4 +296,6 @@ def wind_arrows(
             "wind_field": field is not None,
         },
         "features": features,
+        "note": "칸별 풍향·풍속은 2D 질량보존 흐름(건물을 돌아감)과 바람 위쪽 차폐로 추정한 값입니다. "
+        "건물 위로 넘는 흐름·후류의 역류는 반영하지 않았고 풍속계로 검증하지 않았습니다.",
     }
