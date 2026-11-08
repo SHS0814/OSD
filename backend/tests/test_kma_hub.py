@@ -5,7 +5,7 @@ from app.services.solar import SEOUL_TZ
 
 # Trimmed from a real kma_sfctm3.php?disp=1 response for 청주 at 2026-09-26 12:00.
 SAMPLE = [
-    {"TM": "202609261200", "STN_ID": "131", "WD": "25", "WS": "2.8", "TA": "23.8",
+    {"TM": "202609261200", "STN_ID": "131", "WD": "7", "WS": "2.8", "TA": "23.8",
      "TD": "15.8", "HM": "61", "PV": "18.0", "CA_TOT": "7", "SS": "0.6", "SI": "2.68",
      "TS": "29.8"},
     {"TM": "202609262300", "STN_ID": "131", "WD": "0", "WS": "0.3", "TA": "18.1",
@@ -20,6 +20,8 @@ def test_rows_use_snapshot_columns_and_kst() -> None:
     assert row["ta"] == 23.8
     assert row["icsr"] == 2.68
     assert row["cloud"] == 7
+    # WD comes in tens of degrees; the snapshot says 70 for this hour.
+    assert row["wd"] == 70
 
 
 def test_negative_sentinels_become_missing() -> None:

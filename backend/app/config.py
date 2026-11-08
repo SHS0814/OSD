@@ -27,6 +27,12 @@ class Settings:
     vworld_api_key: str | None = os.getenv("VWORLD_API_KEY") or None
     vworld_domain: str = os.getenv("VWORLD_DOMAIN") or "http://localhost"
     satellite_cache_dir: Path = Path(os.getenv("SATELLITE_CACHE_DIR", DATA_DIR / "raw" / "vworld_satellite"))
+    # Per-cell wind from upwind sheltering (services/wind.py). Not checked
+    # against an anemometer; set WIND_FIELD_ENABLED=0 for the ASOS wind everywhere.
+    wind_field_enabled: bool = os.getenv("WIND_FIELD_ENABLED", "1").lower() not in ("0", "false", "no")
+    # Build all 32 (sector, season) maps at start-up (~19 s) instead of each on
+    # its first request (~0.6 s). Tests turn it off.
+    wind_field_precompute: bool = os.getenv("WIND_FIELD_PRECOMPUTE", "1").lower() not in ("0", "false", "no")
     weather_refresh_seconds: int = int(os.getenv("WEATHER_REFRESH_SECONDS", "300"))
     timezone: str = "Asia/Seoul"
     projected_crs: str = "EPSG:5179"

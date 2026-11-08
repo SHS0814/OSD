@@ -31,7 +31,7 @@ FIELDS = {
     "td": "TD",
     "pv": "PV",
     "ws": "WS",
-    "wd": "WD",
+    "wd": "WD",  # in tens of degrees (36-point code); scaled in parse_rows
     "icsr": "SI",
     "ss": "SS",
     "cloud": "CA_TOT",
@@ -57,7 +57,12 @@ def parse_rows(payload: list[dict]) -> list[tuple[datetime, dict[str, float | No
     rows = []
     for item in payload:
         stamp = datetime.strptime(item["TM"], "%Y%m%d%H%M").replace(tzinfo=SEOUL_TZ)
-        rows.append((stamp, {column: _value(item.get(field)) for column, field in FIELDS.items()}))
+        row = {column: _value(item.get(field)) for column, field in FIELDS.items()}
+        # API허브 gives WD as a 36-point code (7 = 70°); the snapshot has degrees.
+        # Checked against the snapshot for 청주 2026-09-26 10-13시 (5,5,7,5 -> 50,50,70,50).
+        if row["wd"] is not None:
+            row["wd"] *= 10.0
+        rows.append((stamp, row))
     return rows
 
 

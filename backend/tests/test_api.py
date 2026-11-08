@@ -1,3 +1,7 @@
+from datetime import datetime
+
+import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -138,9 +142,109 @@ def test_summer_route_offers_a_shadier_alternative() -> None:
     routes = response.json()["routes"]["features"]
     assert routes[0]["properties"]["kind"] == "shortest"
     assert len(routes) >= 2
+    assert response.json()["mode"] == "heat"
+    assert {route["properties"]["mode"] for route in routes} == {"heat"}
     shortest, other = routes[0]["properties"], routes[-1]["properties"]
     assert other["sun_share"] < shortest["sun_share"]
     assert other["length_m"] <= shortest["length_m"] * 1.3 + 1
+
+
+# 2026-01-13 13:00: clear (cloud 2/10, a full hour of sunshine), 1.7 °C, wind 3.1 m/s from 290°.
+WINTER_NOON = "2026-01-13T13:00:00+09:00"
+
+
+def test_winter_route_offers_a_sunnier_alternative() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/route",
+            params={
+                "from_lat": 36.630931, "from_lon": 127.454222,
+                "to_lat": 36.626035, "to_lon": 127.456245,
+                "datetime": WINTER_NOON,
+            },
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "cold"
+    routes = payload["routes"]["features"]
+    assert routes[0]["properties"]["kind"] == "shortest"
+    assert len(routes) >= 2
+    shortest, other = routes[0]["properties"], routes[-1]["properties"]
+    assert other["mode"] == "cold"
+    assert other["sun_share"] > shortest["sun_share"]
+    assert other["mean_utci"] > shortest["mean_utci"]
+    assert other["cold_minutes"] <= shortest["cold_minutes"]
+    assert other["length_m"] <= shortest["length_m"] * 1.3 + 1
+
+
+def test_night_route_is_only_the_shortest() -> None:
+    with TestClient(app) as client:
+        payload = client.get(
+            "/api/route",
+            params={
+                "from_lat": 36.630931, "from_lon": 127.454222,
+                "to_lat": 36.626035, "to_lon": 127.456245,
+                "datetime": "2026-01-13T22:00:00+09:00",
+            },
+        ).json()
+    assert payload["mode"] == "none"
+    assert [route["properties"]["kind"] for route in payload["routes"]["features"]] == ["shortest"]
+
+
+def test_microclimate_uses_the_per_cell_wind() -> None:
+    from app.services.solar import calculate_solar_position, parse_requested_datetime
+
+    with TestClient(app) as client:
+        payload = client.get("/api/microclimate", params={"datetime": WINTER_NOON}).json()
+        assert payload["inputs"]["wind_field"] is True
+        assert payload["weather"]["wind_direction_deg"] == 290.0
+        model = app.state.microclimate
+        when = parse_requested_datetime(datetime.fromisoformat(WINTER_NOON), None, None)
+        weather = app.state.weather.at(when)
+        solar = calculate_solar_position(when, 36.6282, 127.4567)
+        uniform = model.fields(when, solar, weather).utci
+        per_cell = model.fields(when, solar, weather, wind_direction_deg=290.0).utci
+    # Sheltered wind on a cold day feels warmer than the open-site ASOS wind.
+    valid = np.isfinite(uniform) & np.isfinite(per_cell)
+    assert np.all(per_cell[valid] >= uniform[valid] - 1e-6)
+    assert np.mean(per_cell[valid] - uniform[valid]) > 0.5
+    assert payload["summary"]["utci_mean"] == pytest.approx(float(np.nanmean(per_cell)), abs=0.1)
+
+
+def test_wind_points_for_drawing_arrows() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/wind", params={"datetime": WINTER_NOON})
+        dense = client.get("/api/wind", params={"datetime": WINTER_NOON, "step_m": 12}).json()
+        too_dense = client.get("/api/wind", params={"datetime": WINTER_NOON, "step_m": 4})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "FeatureCollection"
+    assert payload["wind"] == {"asos_speed_ms": 3.1, "direction_deg": 290.0, "wind_field": True}
+    points = payload["features"]
+    assert points
+    assert len(dense["features"]) > 3 * len(points)
+    for point in points:
+        lon, lat = point["geometry"]["coordinates"]
+        assert 127.44 < lon < 127.47 and 36.62 < lat < 36.64
+        props = point["properties"]
+        assert 0 < props["factor"] <= 1
+        assert props["speed_ms"] <= payload["wind"]["asos_speed_ms"]
+        assert props["direction_deg"] == 290.0
+    assert too_dense.status_code == 422
+
+
+def test_calm_wind_has_no_arrows() -> None:
+    with TestClient(app) as client:
+        payload = client.get("/api/wind", params={"datetime": "2026-01-15T11:00:00+09:00"}).json()
+    assert payload["wind"]["direction_deg"] is None  # ASOS: ws 0.1, wd 0
+    assert payload["wind"]["wind_field"] is True
+    assert payload["features"] == []
+
+
+def test_wind_outside_the_snapshot_is_404() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/wind", params={"datetime": "2030-01-01T12:00:00+09:00"})
+    assert response.status_code == 404
 
 
 def test_route_from_off_campus_is_refused() -> None:
@@ -151,3 +255,26 @@ def test_route_from_off_campus_is_refused() -> None:
                     "datetime": "2026-08-07T15:00:00+09:00"},
         )
     assert response.status_code == 422
+
+
+def test_weather_for_an_observed_instant() -> None:
+    with TestClient(app) as client:
+        payload = client.get("/api/weather", params={"datetime": "2026-08-07T15:00:00+09:00"}).json()
+    assert payload["latest"] is False
+    assert payload["weather"]["station"] == "청주 ASOS (131)"
+    assert payload["solar"]["altitude"] > 0
+
+
+def test_weather_now_falls_back_to_the_latest_observation() -> None:
+    with TestClient(app) as client:
+        period = client.get("/api/weather/period").json()
+        payload = client.get("/api/weather").json()
+    # The committed snapshot ends before today, so without an API허브 key "now" is the latest hour.
+    if payload["latest"]:
+        assert payload["datetime"] == period["latest_observation"]
+
+
+def test_weather_outside_the_snapshot_is_404() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/weather", params={"datetime": "2020-01-01T12:00:00+09:00"})
+    assert response.status_code == 404

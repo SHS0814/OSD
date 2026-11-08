@@ -390,9 +390,15 @@ class MicroclimateModel:
             self._fields_cache[cache_key] = result
         return result
 
-    def compute(self, when: datetime, solar: SolarPosition, weather: WeatherSample) -> dict:
+    def compute(
+        self,
+        when: datetime,
+        solar: SolarPosition,
+        weather: WeatherSample,
+        wind_direction_deg: float | None = None,
+    ) -> dict:
         day = when.date()
-        fields = self.fields(when, solar, weather)
+        fields = self.fields(when, solar, weather, wind_direction_deg=wind_direction_deg)
         irradiance, sunlit, mrt, comfort = fields.irradiance, fields.sunlit, fields.mrt, fields.utci
         summary = self._summary(comfort, mrt, sunlit)
 
@@ -402,6 +408,8 @@ class MicroclimateModel:
                 "terrain": self.has_terrain,
                 "canopy_share": _round(np.nanmean(np.where(self.valid, self.canopy_cover, np.nan)), 3),
                 "in_leaf": in_leaf(day),
+                # Per-cell wind is attached; at calm (no direction) it is the ASOS wind everywhere.
+                "wind_field": self.wind_field is not None,
             },
             "irradiance": {
                 "direct_normal_wm2": round(irradiance.direct_normal, 1),

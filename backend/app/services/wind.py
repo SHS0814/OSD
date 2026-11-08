@@ -249,3 +249,36 @@ class WindField:
         """Per-cell 10 m-equivalent wind; cells outside the valid area keep the ASOS value."""
         k = self.factor(sector_of(direction_deg, speed_ms), in_leaf(day))
         return speed_ms * np.where(np.isfinite(k), k, 1.0)
+
+
+def arrow_features(model, field: "WindField", speed_ms: float, direction_deg: float, day: date, step_cells: int) -> list[dict]:
+    """GeoJSON points every ``step_cells`` output cells over open campus ground,
+    each with the per-cell wind (before UTCI's 0.5 m/s floor) and K."""
+    from shapely.geometry import MultiPoint
+
+    from .geometry import to_wgs84
+    from .microclimate import CELL_M
+
+    k = field.factor(sector_of(direction_deg, speed_ms), in_leaf(day))
+    offset = step_cells // 2
+    rows, cols = model.valid.nonzero()
+    keep = ((rows - offset) % step_cells == 0) & ((cols - offset) % step_cells == 0) & np.isfinite(k[rows, cols])
+    rows, cols = rows[keep], cols[keep]
+    if not len(rows):
+        return []
+    grid = model.grid
+    x = grid.origin_x + (cols + 0.5) * CELL_M
+    y = grid.origin_y - (rows + 0.5) * CELL_M
+    points = to_wgs84(MultiPoint(np.column_stack([x, y]))).geoms
+    return [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [round(point.x, 6), round(point.y, 6)]},
+            "properties": {
+                "speed_ms": round(float(speed_ms * k[r, c]), 2),
+                "factor": round(float(k[r, c]), 3),
+                "direction_deg": round(float(direction_deg), 1),
+            },
+        }
+        for point, r, c in zip(points, rows, cols)
+    ]
