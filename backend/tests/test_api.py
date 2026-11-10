@@ -138,8 +138,38 @@ def test_summer_route_offers_a_shadier_alternative() -> None:
     routes = response.json()["routes"]["features"]
     assert routes[0]["properties"]["kind"] == "shortest"
     assert len(routes) >= 2
+    assert response.json()["mode"] == "heat"
+    assert {route["properties"]["mode"] for route in routes} == {"heat"}
     shortest, other = routes[0]["properties"], routes[-1]["properties"]
     assert other["sun_share"] < shortest["sun_share"]
+    assert other["length_m"] <= shortest["length_m"] * 1.3 + 1
+
+
+# 2026-01-13 13:00: clear (cloud 2/10, a full hour of sunshine), 1.7 °C, wind 3.1 m/s from 290°.
+WINTER_NOON = "2026-01-13T13:00:00+09:00"
+
+
+def test_winter_route_offers_a_sunnier_alternative() -> None:
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/route",
+            params={
+                "from_lat": 36.630931, "from_lon": 127.454222,
+                "to_lat": 36.626035, "to_lon": 127.456245,
+                "datetime": WINTER_NOON,
+            },
+        )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "cold"
+    routes = payload["routes"]["features"]
+    assert routes[0]["properties"]["kind"] == "shortest"
+    assert len(routes) >= 2
+    shortest, other = routes[0]["properties"], routes[-1]["properties"]
+    assert other["mode"] == "cold"
+    assert other["sun_share"] > shortest["sun_share"]
+    assert other["mean_utci"] > shortest["mean_utci"]
+    assert other["cold_minutes"] <= shortest["cold_minutes"]
     assert other["length_m"] <= shortest["length_m"] * 1.3 + 1
 
 
@@ -153,6 +183,7 @@ def test_night_route_is_only_the_shortest() -> None:
                 "datetime": "2026-01-13T22:00:00+09:00",
             },
         ).json()
+    assert payload["mode"] == "none"
     assert [route["properties"]["kind"] for route in payload["routes"]["features"]] == ["shortest"]
 
 
