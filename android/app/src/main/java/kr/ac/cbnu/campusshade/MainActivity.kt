@@ -1,5 +1,6 @@
 package kr.ac.cbnu.campusshade
 
+import android.app.DatePickerDialog
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -51,7 +52,14 @@ class MainActivity : AppCompatActivity() {
     private var is3d = true
     private var showHeatmap = true
 
+    // Shadows and felt temperature are shown for today when the server keeps its
+    // weather current (API허브), otherwise for the last fully observed day.
     private var dataDate: LocalDate = LocalDate.now(SEOUL_ZONE)
+    // The date "현재 시각" returns to, and the range the date picker allows;
+    // both come from /api/weather/period.
+    private var defaultDate: LocalDate = dataDate
+    private var firstDate: LocalDate? = null
+    private var latestObservation: LocalDateTime? = null
     private val debounceRequest = Runnable { requestForSelectedTime() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -94,7 +102,7 @@ class MainActivity : AppCompatActivity() {
                 mapStyle = style
                 installDataLayers(style)
                 requestBuildings()
-                requestForSelectedTime()
+                requestDataDateThenRefresh()
             }
         }
     }
@@ -110,10 +118,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         timeSheet.onNow = {
-            dataDate = LocalDate.now(SEOUL_ZONE)
+            dataDate = defaultDate
             setToCurrentTime(requestImmediately = true)
             updateDataDateLabel()
         }
+        timeSheet.onPickDate = { pickDate() }
 
         binding.mapSettingsButton.setOnClickListener { mapSettings.show() }
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
@@ -148,6 +157,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun pickDate() {
+        DatePickerDialog(
+            this,
+            { _, year, month, day ->
+                dataDate = LocalDate.of(year, month + 1, day)
+                followingNow = false
+                updateDataDateLabel()
+                requestForSelectedTime()
+            },
+            dataDate.year,
+            dataDate.monthValue - 1,
+            dataDate.dayOfMonth,
+        ).apply {
+            firstDate?.let { datePicker.minDate = it.toEpochMillis() }
+            datePicker.maxDate = defaultDate.toEpochMillis()
+        }.show()
+    }
+
+    private fun LocalDate.toEpochMillis(): Long = atStartOfDay(SEOUL_ZONE).toInstant().toEpochMilli()
+
     private fun setToCurrentTime(requestImmediately: Boolean) {
         val now = LocalDateTime.now(SEOUL_ZONE)
         selectedMinutes = (now.hour * 60 + now.minute).coerceIn(START_MINUTES, END_MINUTES)
@@ -166,7 +195,10 @@ class MainActivity : AppCompatActivity() {
         timeSheet.showCard(followingNow, selectedMinutes, dataDate, LocalDate.now(SEOUL_ZONE))
     }
 
-    private fun updateDataDateLabel() = updateTimeCard()
+    private fun updateDataDateLabel(observedAt: LocalDateTime? = null) {
+        timeSheet.showDataDate(dataDate, LocalDate.now(SEOUL_ZONE), observedAt)
+        updateTimeCard()
+    }
 
     // ---- 지도 데이터 ----
 
@@ -187,6 +219,29 @@ class MainActivity : AppCompatActivity() {
     private fun requestBuildings() {
         api.fetchJson(api.url("api/buildings").build(), null) { root ->
             layers?.buildings?.show(root.toString())
+        }
+    }
+
+    private fun requestDataDateThenRefresh() {
+        api.fetchJson(
+            api.url("api/weather/period").build(),
+            null,
+            onError = { requestForSelectedTime() },
+        ) { root ->
+            val latest = OffsetDateTime.parse(root.getString("latest_observation"))
+                .atZoneSameInstant(SEOUL_ZONE).toLocalDateTime()
+            latestObservation = latest
+            firstDate = OffsetDateTime.parse(root.getString("start"))
+                .atZoneSameInstant(SEOUL_ZONE).toLocalDate()
+            val today = LocalDate.now(SEOUL_ZONE)
+            defaultDate = if (root.getBoolean("realtime") && latest.toLocalDate() == today) {
+                today
+            } else {
+                LocalDate.parse(root.getString("latest_full_date"))
+            }
+            dataDate = defaultDate
+            updateDataDateLabel()
+            requestForSelectedTime()
         }
     }
 
@@ -225,11 +280,14 @@ class MainActivity : AppCompatActivity() {
             url,
             microclimateCall,
             onError = { code ->
-                if (code == 404) layers?.heatmap?.setVisible(false)
+                if (code == 404) showNotObservedYet()
             },
             parse = UtciHeatmap::fromResponse,
         ) { root, heatmap ->
             showHeatmap(heatmap)
+            val observedAt = OffsetDateTime.parse(root.getJSONObject("weather").getString("observed_at"))
+                .atZoneSameInstant(SEOUL_ZONE).toLocalDateTime()
+            updateDataDateLabel(observedAt)
             val summary = root.getJSONObject("summary")
             val airTemp = root.getJSONObject("weather").getDouble("air_temp_c")
             val sunUp = root.getJSONObject("solar").getDouble("altitude") > 0
@@ -245,6 +303,15 @@ class MainActivity : AppCompatActivity() {
                 getString(R.string.utci_night, airTemp, summary.getDouble("utci_mean"))
             }
         }
+    }
+
+    // The server answers 404 for an instant more than a few hours past its latest
+    // observation, i.e. later today than has been observed.
+    private fun showNotObservedYet() {
+        layers?.heatmap?.setVisible(false)
+        binding.statusText.text = latestObservation?.let {
+            getString(R.string.not_observed_yet, it.format(HOUR_MINUTE))
+        } ?: getString(R.string.not_observed_yet_unknown)
     }
 
     override fun onStart() {
@@ -272,6 +339,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private val CAMPUS_CENTER = LatLng(36.6268, 127.4583)
         private val SEOUL_ZONE = ZoneId.of("Asia/Seoul")
+        private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm")
         private const val START_MINUTES = 6 * 60
         private const val END_MINUTES = 20 * 60
     }
