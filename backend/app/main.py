@@ -14,11 +14,13 @@ from app.config import settings
 from app.db.repository import BuildingRepository
 from app.services import kma_hub
 from app.services.microclimate import MicroclimateModel
+from app.services.routing import WalkNetwork
 from app.services.solar import SEOUL_TZ
 from app.services.surfaces import load_land_cover, load_street_trees
 from app.services.terrain import Terrain
 from app.services.thermal import utci
 from app.services.weather import WeatherStore
+from app.services.wind import WindField
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +30,14 @@ REVISION_WINDOW = timedelta(hours=2)
 def load_campus_boundary():
     collection = json.loads(settings.campus_boundary_path.read_text(encoding="utf-8"))
     return shape(collection["features"][0]["geometry"])
+
+
+def load_sensor_sites() -> dict:
+    """Sensor positions (scripts/build_sensor_sites.py); none until that file is built."""
+    if not settings.sensors_data_path.exists():
+        return {"type": "FeatureCollection", "features": []}
+    collection = json.loads(settings.sensors_data_path.read_text(encoding="utf-8"))
+    return {"type": "FeatureCollection", "features": collection["features"]}
 
 
 async def keep_weather_current(store: WeatherStore, key: str) -> None:
@@ -57,6 +67,11 @@ async def lifespan(app: FastAPI):
         snapshot_path=settings.building_data_path,
     )
     app.state.buildings.synchronize_snapshot()
+    app.state.sensors = load_sensor_sites()
+    # Paths for shade-aware routing (scripts/build_walk_network.py); routing is off without them.
+    app.state.walk_network = (
+        WalkNetwork(settings.walk_network_data_path) if settings.walk_network_data_path.exists() else None
+    )
     app.state.weather = WeatherStore(
         settings.weather_data_path, settings.campus_latitude, settings.campus_longitude
     )
@@ -74,8 +89,15 @@ async def lifespan(app: FastAPI):
         terrain=Terrain(settings.terrain_data_path),
         ground=ground,
         canopies=canopies
+        + load_street_trees(settings.tree_canopy_data_path)
         + load_street_trees(settings.street_trees_data_path),
     )
+    if settings.wind_field_enabled:
+        app.state.microclimate.wind_field = WindField(app.state.microclimate.obstacles)
+        if settings.wind_field_precompute:
+            # Shelter for 16 sectors × leaf on/off (~12-19 s) and the 2D flow
+            # (two sparse solves, ~0.6 s); every request then only combines maps.
+            await asyncio.to_thread(app.state.microclimate.wind_field.precompute)
     # pythermalcomfort JIT-compiles UTCI on first use (~15 s); pay that here
     # rather than on the first user's request.
     utci(np.array([25.0]), np.array([25.0]), 1.0, np.array([50.0]))
