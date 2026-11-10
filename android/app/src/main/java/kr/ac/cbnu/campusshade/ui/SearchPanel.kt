@@ -21,6 +21,8 @@ import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 class SearchPanel(private val activity: AppCompatActivity, private val binding: ActivityMainBinding) {
     /** Bring [Building] into view; called for a search result, not for a building tapped on the map. */
     var onFocus: (Building) -> Unit = {}
+    /** Use the selected building as the route's start ([start] true) or end. */
+    var onRouteEnd: (building: Building, start: Boolean) -> Unit = { _, _ -> }
 
     var buildings: List<Building> = emptyList()
         set(value) {
@@ -76,6 +78,8 @@ class SearchPanel(private val activity: AppCompatActivity, private val binding: 
             hideSelection()
             if (binding.searchInput.hasFocus()) showResults()
         }
+        binding.routeFromButton.setOnClickListener { selectedBuilding?.let { onRouteEnd(it, true) } }
+        binding.routeToButton.setOnClickListener { selectedBuilding?.let { onRouteEnd(it, false) } }
         binding.selectionCloseButton.setOnClickListener { hideSelection() }
     }
 

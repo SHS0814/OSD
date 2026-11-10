@@ -14,6 +14,7 @@ import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.map.MapLayers
 import kr.ac.cbnu.campusshade.ui.Legend
 import kr.ac.cbnu.campusshade.ui.MapSettingsSheet
+import kr.ac.cbnu.campusshade.ui.RouteCard
 import kr.ac.cbnu.campusshade.ui.SearchPanel
 import kr.ac.cbnu.campusshade.ui.TimeSheet
 import okhttp3.Call
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var timeSheet: TimeSheet
     private lateinit var mapSettings: MapSettingsSheet
     private lateinit var search: SearchPanel
+    private lateinit var routeCard: RouteCard
     private lateinit var legend: Legend
     private val handler = Handler(Looper.getMainLooper())
     private var map: MapLibreMap? = null
@@ -54,6 +56,12 @@ class MainActivity : AppCompatActivity() {
     private var is3d = true
     private var showHeatmap = true
     private var showSatellite = true
+    private var sensors: List<SensorSite> = emptyList()
+
+    // 길찾기: 출발지·도착지(검색한 건물 또는 지도에서 길게 누른 곳)
+    private var routeStart: Place? = null
+    private var routeEnd: Place? = null
+    private var routeCall: Call? = null
 
     // Shadows and felt temperature are shown for today when the server keeps its
     // weather current (API허브), otherwise for the last fully observed day.
@@ -87,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         timeSheet = TimeSheet(this, binding)
         mapSettings = MapSettingsSheet(this)
         search = SearchPanel(this, binding)
+        routeCard = RouteCard(binding)
         legend = Legend(binding.legend)
 
         setToCurrentTime(requestImmediately = false)
@@ -103,11 +112,13 @@ class MainActivity : AppCompatActivity() {
             // 저작권 표시는 아래 카드에 모아 둔다.
             mapLibreMap.uiSettings.isLogoEnabled = false
             mapLibreMap.uiSettings.isAttributionEnabled = false
+            mapLibreMap.addOnMapLongClickListener { point -> search.hideResults(); pickRoutePoint(point); true }
             mapLibreMap.addOnMapClickListener { point -> onMapTapped(point) }
             mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.BASE_STYLE_URL)) { style ->
                 mapStyle = style
                 installDataLayers(style)
                 requestBuildings()
+                requestSensors()
                 requestDataDateThenRefresh()
             }
         }
@@ -134,6 +145,7 @@ class MainActivity : AppCompatActivity() {
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
         mapSettings.onSatellitePicked = { if (it != showSatellite) toggleBaseMap() }
         mapSettings.onHeatmapPicked = { if (it != showHeatmap) toggleLayerMode() }
+        routeCard.onClear = { clearRoute() }
         updateViewModeButton()
         updateLayerMode()
         updateBaseMapButton()
@@ -228,6 +240,7 @@ class MainActivity : AppCompatActivity() {
         search.onFocus = { building ->
             map?.animateCamera(CameraUpdateFactory.newLatLngZoom(building.latLng(), SELECTED_ZOOM), 700)
         }
+        search.onRouteEnd = { building, start -> useBuildingAsRouteEnd(building, start) }
     }
 
     private fun Building.latLng() = LatLng(latitude, longitude)
@@ -241,6 +254,46 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         return false
+    }
+
+    // ---- 길찾기 ----
+
+    private fun useBuildingAsRouteEnd(building: Building, start: Boolean) {
+        val place = Place(building.label, building.latLng())
+        if (start) routeStart = place else routeEnd = place
+        search.hideSelection()
+        onRouteEndsChanged()
+    }
+
+    private fun pickRoutePoint(point: LatLng) {
+        val place = Place(getString(R.string.route_map_point), point)
+        when {
+            // 이미 경로가 있으면 새 출발지부터 다시 고른다.
+            routeStart != null && routeEnd != null -> { routeStart = place; routeEnd = null }
+            routeStart == null -> routeStart = place
+            else -> routeEnd = place
+        }
+        onRouteEndsChanged()
+    }
+
+    // 출발·도착이 다 정해지면 경로를 구하고, 하나만 있으면 나머지를 고르라고 안내한다.
+    private fun onRouteEndsChanged() {
+        showRouteEnds()
+        val start = routeStart
+        val end = routeEnd
+        if (start != null && end != null) {
+            requestRoute()
+            return
+        }
+        routeCall?.cancel()
+        showRoute(null)
+        routeCard.showOrHide(
+            when {
+                start != null -> getString(R.string.route_pick_end, start.name)
+                end != null -> getString(R.string.route_pick_start, end.name)
+                else -> ""
+            }
+        )
     }
 
     // ---- 지도 데이터 ----
@@ -265,6 +318,13 @@ class MainActivity : AppCompatActivity() {
         api.fetchJson(api.url("api/buildings").build(), null) { root ->
             layers?.buildings?.show(root.toString())
             search.buildings = Places.buildings(root)
+        }
+    }
+
+    private fun requestSensors() {
+        api.fetchJson(api.url("api/sensors").build(), null) { root ->
+            layers?.sensors?.show(root.toString())
+            sensors = Places.sensors(root)
         }
     }
 
@@ -294,6 +354,47 @@ class MainActivity : AppCompatActivity() {
     private fun requestForSelectedTime() {
         if (mapStyle == null) return
         if (showHeatmap) requestMicroclimate() else requestShadows()
+        // 그늘은 시각마다 달라지므로 경로도 같은 시각으로 다시 구한다.
+        requestRoute()
+    }
+
+    private fun requestRoute() {
+        val start = routeStart ?: return
+        val end = routeEnd ?: return
+        if (mapStyle == null) return
+        routeCard.show(getString(R.string.route_loading))
+        val url = api.url("api/route")
+            .addQueryParameter("from_lat", start.point.latitude.toString())
+            .addQueryParameter("from_lon", start.point.longitude.toString())
+            .addQueryParameter("to_lat", end.point.latitude.toString())
+            .addQueryParameter("to_lon", end.point.longitude.toString())
+            .addQueryParameter("datetime", selectedDateTime())
+            .build()
+        routeCall = api.fetchJson(
+            url,
+            routeCall,
+            onError = { routeCard.setText(getString(R.string.route_failed)); showRoute(null) },
+        ) { root ->
+            showRoute(root.getJSONObject("routes").toString())
+            routeCard.setText("${start.name} → ${end.name}\n" + RouteSummary.text(root))
+        }
+    }
+
+    private fun showRoute(geoJson: String?) {
+        layers?.routes?.showRoutes(geoJson)
+    }
+
+    private fun showRouteEnds() {
+        layers?.routes?.showEnds(routeStart, routeEnd)
+    }
+
+    private fun clearRoute() {
+        routeCall?.cancel()
+        routeStart = null
+        routeEnd = null
+        showRoute(null)
+        showRouteEnds()
+        routeCard.hide()
     }
 
     private fun selectedDateTime(): String =
@@ -371,6 +472,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         shadowCall?.cancel()
         microclimateCall?.cancel()
+        routeCall?.cancel()
         timeSheet.dismiss()
         mapSettings.dismiss()
         handler.removeCallbacksAndMessages(null)
