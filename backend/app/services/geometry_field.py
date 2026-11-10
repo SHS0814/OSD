@@ -45,6 +45,10 @@ from .terrain import Terrain
 OBSERVER_M = 1.1
 SHADOW_RANGE_M = 300.0
 
+# Sky view factor: horizon angle searched in this many azimuths, out to this range.
+SVF_DIRECTIONS = 36
+SVF_RANGE_M = 200.0
+
 
 class GeometryField:
     def __init__(
@@ -91,6 +95,7 @@ class GeometryField:
         )
 
         self._prepare_shadow_targets(open_ground)
+        self.sky_view_solid, self.sky_view_canopy = self._sky_view_factors()
 
     # -- building the surface model ------------------------------------------------
 
@@ -159,11 +164,54 @@ class GeometryField:
         self.target_cell = (rows // SUBCELLS) * self.grid.cols + cols // SUBCELLS
         self.target_count = np.bincount(self.target_cell, minlength=self.valid.size)
 
+    def _sky_view_factors(self) -> tuple[np.ndarray, np.ndarray]:
+        """SVF from each valid cell centre: over terrain and buildings, and with crowns too.
+
+        Each is 1 - mean(sin² of the horizon angle) over SVF_DIRECTIONS azimuths.
+        """
+        rows, cols = self.valid.nonzero()
+        fine_row = rows * SUBCELLS + SUBCELLS // 2 + PAD
+        fine_col = cols * SUBCELLS + SUBCELLS // 2 + PAD
+        x, y = self.fine_x[fine_row, fine_col], self.fine_y[fine_row, fine_col]
+        z = self.ground[fine_row, fine_col] + OBSERVER_M
+        n_rows, n_cols = self.fine_x.shape
+        solid_sum = np.zeros(x.shape)
+        canopy_sum = np.zeros(x.shape)
+        for azimuth in np.linspace(0, 2 * math.pi, SVF_DIRECTIONS, endpoint=False):
+            dx, dy = math.sin(azimuth), math.cos(azimuth)
+            steep_solid = np.zeros(x.shape)
+            steep_canopy = np.zeros(x.shape)
+            for distance in ray_distances(SVF_RANGE_M):
+                col = np.clip(((x + dx * distance - self.fine_origin_x) / FINE_M).astype(int), 0, n_cols - 1)
+                row = np.clip(((self.fine_origin_y - (y + dy * distance)) / FINE_M).astype(int), 0, n_rows - 1)
+                rise_solid = (self.solid[row, col] - z) / distance
+                steep_solid = np.maximum(steep_solid, rise_solid)
+                rise_canopy = (self.canopy_top[row, col] - z) / distance
+                steep_canopy = np.maximum(steep_canopy, np.maximum(rise_solid, rise_canopy))
+            solid_sum += np.sin(np.arctan(steep_solid)) ** 2
+            canopy_sum += np.sin(np.arctan(steep_canopy)) ** 2
+        solid = 1.0 - solid_sum / SVF_DIRECTIONS
+        canopy = 1.0 - canopy_sum / SVF_DIRECTIONS
+        # Standing under a crown, the sky overhead is the crown.
+        canopy = np.where(self.canopy_top[fine_row, fine_col] > z, 0.0, canopy)
+        out_solid = np.full(self.valid.shape, np.nan)
+        out_canopy = np.full(self.valid.shape, np.nan)
+        out_solid[rows, cols] = solid
+        out_canopy[rows, cols] = canopy
+        return out_solid, out_canopy
+
     # -- per instant ---------------------------------------------------------------
 
     def _transmissivity_lookup(self, day: date) -> np.ndarray:
         """Per canopy type index -> transmissivity; the extra last entry (index -1) is open sky."""
         return np.array([canopy.transmissivity(day) for canopy in self.canopy_types] + [1.0])
+
+    def sky_view(self, day: date) -> np.ndarray:
+        """Crowns hide part of the sky; what they hide still lets its transmissivity through."""
+        lookup = self._transmissivity_lookup(day)
+        present = self.canopy_kind[self.canopy_kind >= 0]
+        tau = float(lookup[present].mean()) if present.size else 1.0
+        return self.sky_view_canopy + (self.sky_view_solid - self.sky_view_canopy) * tau
 
     def _trace_sun(self, rows: np.ndarray, cols: np.ndarray, solar: SolarPosition, day: date) -> np.ndarray:
         """Direct-sun share reaching OBSERVER_M above the given fine pixels (sun above the horizon)."""

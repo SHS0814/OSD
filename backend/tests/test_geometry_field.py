@@ -80,6 +80,15 @@ def test_sun_at_points_sees_the_shade_edge_a_cell_mean_blurs() -> None:
     assert model.sunlit_at(SolarPosition(altitude=-5, azimuth=0), SUMMER, x, y).tolist() == [0.0] * 3
 
 
+def test_buildings_and_crowns_lower_the_sky_view() -> None:
+    open_sky = scene().sky_view(SUMMER)
+    walled = scene(buildings=[(square(0, 25, 10), 30.0)]).sky_view(SUMMER)
+    forest = scene(canopies=[square(0, 0, 40)]).sky_view(SUMMER)
+    assert np.nanmin(open_sky) == pytest.approx(1.0)
+    assert walled[cell_at(scene(), 0, 5)] < 0.9
+    assert forest[cell_at(scene(), 0, 0)] == pytest.approx(0.2, abs=0.05)
+
+
 def test_terrain_samples_bilinearly(tmp_path) -> None:
     path = tmp_path / "dtm.npz"
     np.savez(path, terrain=np.array([[0.0, 10.0], [20.0, 30.0]], dtype=np.float32),
