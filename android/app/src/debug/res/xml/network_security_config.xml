@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only. Overrides the strict main/ config so a physical device on
+  the same Wi-Fi can reach a developer machine over plain HTTP, whatever its
+  LAN address happens to be. Release builds keep main/ and must use HTTPS.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>
