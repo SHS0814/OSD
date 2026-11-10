@@ -1,0 +1,65 @@
+{
+  "dataset": "cbnu_buildings",
+  "generated_at": "2026-09-24T15:09:36.278678+00:00",
+  "campus": {
+    "osm_type": "relation",
+    "osm_id": 6705106
+  },
+  "sources": {
+    "osm": {
+      "license": "ODbL 1.0",
+      "attribution": "© OpenStreetMap contributors",
+      "snapshot_timestamp": "2026-09-24T15:08:02Z",
+      "returned_building_count": 258,
+      "outside_campus_count": 101
+    },
+    "filters": {
+      "excluded_building_values": [
+        "greenhouse"
+      ],
+      "excluded_by_building_value": 30,
+      "minimum_footprint_m2": 200.0,
+      "excluded_below_minimum_footprint": 22,
+      "note": "No excluded structure carried a height tag, so the filters remove map clutter without losing a single shadow"
+    },
+    "vworld": {
+      "layer": null,
+      "status": "not_used",
+      "reason": "VWorld LT_C_BLDGINFO no longer exists in the catalog; the replacement GIS건물통합정보 (dt_d010) carries surveyed heights for only a small share of campus buildings and its cadastral footprints do not align with the OSM outlines used here",
+      "query_count": 0,
+      "returned_feature_count": 0
+    }
+  },
+  "output": {
+    "building_count": 105,
+    "direct_height_count": 67,
+    "missing_height_count": 38,
+    "rejected_geometry_count": 0
+  },
+  "height_availability": {
+    "by_source": {
+      "건축물대장:heit": 56,
+      "OpenStreetMap:height": 9,
+      "건축물대장:heit(단지)": 2
+    },
+    "direct_height": 67,
+    "levels_tag_present": 81,
+    "levels_only_not_converted": 24,
+    "no_height_and_no_levels": 14,
+    "note": "Floor counts from OSM and from the ledger are recorded verbatim and never converted to metres, so a building with only floors still casts no shadow rather than showing an estimate as if it were surveyed"
+  },
+  "matching": {
+    "crs": "EPSG:5179",
+    "criteria": null,
+    "accepted_count": 0,
+    "unmatched_osm_count": 105,
+    "ambiguous_count": 0,
+    "height_conflict_count": 0,
+    "accepted": [],
+    "ambiguous": [],
+    "low_confidence_candidates": [],
+    "height_conflicts": [],
+    "excluded_abnormal_heights": [],
+    "rejected_geometries": []
+  }
+}
