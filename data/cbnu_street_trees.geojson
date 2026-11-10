@@ -1,0 +1,20 @@
+{
+  "type": "FeatureCollection",
+  "name": "cbnu_street_trees",
+  "metadata": {
+    "description": "캠퍼스 가로수. 토지피복지도는 나무가 덮은 길을 '도로'로 분류해서 가로수가 빠지므로 위성사진을 보고 직접 입력합니다.",
+    "geometry": "LineString: 나무가 줄지어 선 중심선 (canopy_width_m 폭으로 수관을 만듦) / Polygon: 수관 외곽선",
+    "properties": {
+      "leaf": "broadleaf(활엽, 기본값) 또는 conifer(침엽)",
+      "height_m": "수관 꼭대기 높이 (m), 기본 8",
+      "canopy_width_m": "LineString일 때 수관 폭 (m), 기본 6",
+      "note": "선택. 수종, 확인 날짜 등 메모"
+    },
+    "example": {
+      "type": "Feature",
+      "geometry": {"type": "LineString", "coordinates": [[127.4561, 36.6262], [127.4575, 36.6270]]},
+      "properties": {"leaf": "broadleaf", "height_m": 9, "canopy_width_m": 7, "note": "은행나무, 2026-10 위성사진"}
+    }
+  },
+  "features": []
+}
