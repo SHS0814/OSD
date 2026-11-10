@@ -50,6 +50,10 @@ SHADOW_RANGE_M = 300.0
 SVF_DIRECTIONS = 36
 SVF_RANGE_M = 200.0
 
+# Neighbour-averaging rounds for cells under buildings: enough to close a
+# 200 m wide block from both sides.
+FILL_ROUNDS = math.ceil(100.0 / CELL_M)
+
 
 class GeometryField:
     def __init__(
@@ -278,3 +282,31 @@ class GeometryField:
     def canopy_share(self) -> float:
         """Share of the valid cells' open ground under crowns."""
         return float(np.nanmean(np.where(self.valid, self.canopy_cover, np.nan)))
+
+    def fill_under_buildings(self, values: np.ndarray) -> np.ndarray:
+        """Give campus cells covered by buildings the mean of their open neighbours.
+
+        Building outlines do not follow the grid, so leaving those cells
+        empty shows the base map as a pale seam between each building and the
+        heatmap. The 3D buildings are drawn over these cells anyway; the fill
+        only has to close the seam, so a few rounds of neighbour averaging do.
+        """
+        filled = values.copy()
+        for _ in range(FILL_ROUNDS):
+            missing = self.inside & ~np.isfinite(filled)
+            if not missing.any():
+                break
+            padded = np.pad(filled, 1, constant_values=np.nan)
+            neighbours = np.stack(
+                [
+                    padded[1 + dy : 1 + dy + filled.shape[0], 1 + dx : 1 + dx + filled.shape[1]]
+                    for dy in (-1, 0, 1)
+                    for dx in (-1, 0, 1)
+                    if dy or dx
+                ]
+            )
+            count = np.isfinite(neighbours).sum(axis=0)
+            total = np.nansum(neighbours, axis=0)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                filled = np.where(missing & (count > 0), total / count, filled)
+        return filled
