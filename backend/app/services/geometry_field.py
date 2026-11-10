@@ -14,20 +14,22 @@ is set by the surroundings, all known without sensors:
 - ground albedo and heating from the land cover.
 
 ``GeometryField.at`` hands these to the comfort side as ``GeometryFields``
-(contracts.py). Geometry is resolved on the fine raster and reported on the
-output cells (grid.py).
+and ``obstacles`` hands the wind side the buildings and crowns as an
+``ObstacleRaster`` (contracts.py). Geometry is resolved on the fine raster
+and reported on the output cells (grid.py).
 """
 
 from __future__ import annotations
 
 import math
 from datetime import date
+from functools import cached_property
 
 import numpy as np
 import shapely
 from shapely.geometry.base import BaseGeometry
 
-from .contracts import GeometryFields
+from .contracts import GeometryFields, ObstacleRaster
 from .geometry import to_projected
 from .grid import CELL_M, FINE_M, MAX_BUILDING_SHARE, PAD, SUBCELLS, GridSpec, ray_distances
 from .solar import SolarPosition
@@ -277,6 +279,22 @@ class GeometryField:
             # Cells with no open ground (all building) take the default surface.
             albedo=np.nan_to_num(self.albedo, nan=default.albedo),
             heating=np.nan_to_num(self.heating, nan=default.ground_heating),
+        )
+
+    @cached_property
+    def obstacles(self) -> ObstacleRaster:
+        """Buildings and crowns on the fine raster for the wind side."""
+        has_crown = (self.canopy_kind >= 0) & ~self.footprint
+        return ObstacleRaster(
+            grid=self.grid,
+            inside=self.inside,
+            valid=self.valid,
+            footprint=self.footprint,
+            building_height=np.where(self.footprint, self.solid - self.ground, 0.0),
+            crown_height=np.where(has_crown, self.canopy_top - self.ground, 0.0),
+            crown_kind=np.where(has_crown, self.canopy_kind, -1),
+            transmissivity_leaf_on=tuple(c.transmissivity_leaf_on for c in self.canopy_types),
+            transmissivity_leaf_off=tuple(c.transmissivity_leaf_off for c in self.canopy_types),
         )
 
     def canopy_share(self) -> float:

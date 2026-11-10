@@ -130,3 +130,21 @@ def test_geometry_fields_carry_sun_sky_and_ground_per_cell() -> None:
     # Under the building there is no open ground; it takes the default (paved) surface.
     assert np.all(np.isfinite(fields.albedo)) and np.all(np.isfinite(fields.heating))
     assert fields.albedo[cell_at(model, 0, 0)] == pytest.approx(0.12)
+
+
+def test_obstacle_raster_has_heights_above_ground_and_no_crown_under_a_roof() -> None:
+    tall, unknown = square(0, 0, 10), square(60, 0, 10)
+    crown = square(0, 0, 30)  # reaches under the tall building
+    model = scene(buildings=[(tall, 20.0), (unknown, None)], canopies=[crown])
+    raster = model.obstacles
+    assert raster.footprint.shape == model.grid.fine_shape
+    assert raster.building_height.max() == pytest.approx(20.0)
+    # A building of unknown height is in the footprint at height 0.
+    unknown_pixels = raster.footprint & (raster.building_height == 0)
+    assert unknown_pixels.sum() == pytest.approx(100, rel=0.25)  # 20 m × 20 m at 2 m
+    assert not (raster.footprint & (raster.crown_kind >= 0)).any()
+    assert raster.crown_height.max() == pytest.approx(TREE.height_m)
+    assert raster.transmissivity(True)[0] == TREE.transmissivity_leaf_on
+    assert raster.transmissivity(False)[0] == TREE.transmissivity_leaf_off
+    assert raster.transmissivity(True)[-1] == 1.0  # index -1: no crown
+    assert np.array_equal(raster.valid, model.valid)
