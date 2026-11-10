@@ -20,6 +20,7 @@ from app.services.surfaces import load_land_cover, load_street_trees
 from app.services.terrain import Terrain
 from app.services.thermal import utci
 from app.services.weather import WeatherStore
+from app.services.wind import WindField
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,12 @@ async def lifespan(app: FastAPI):
         + load_street_trees(settings.tree_canopy_data_path)
         + load_street_trees(settings.street_trees_data_path),
     )
+    if settings.wind_field_enabled:
+        app.state.microclimate.wind_field = WindField(app.state.microclimate.obstacles)
+        if settings.wind_field_precompute:
+            # Shelter for 16 sectors × leaf on/off (~12-19 s) and the 2D flow
+            # (two sparse solves, ~0.6 s); every request then only combines maps.
+            await asyncio.to_thread(app.state.microclimate.wind_field.precompute)
     # pythermalcomfort JIT-compiles UTCI on first use (~15 s); pay that here
     # rather than on the first user's request.
     utci(np.array([25.0]), np.array([25.0]), 1.0, np.array([50.0]))
