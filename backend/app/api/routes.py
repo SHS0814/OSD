@@ -8,6 +8,7 @@ from app.config import settings
 from app.services.geometry import to_wgs84
 from app.services.shadow import building_shadows
 from app.services.solar import calculate_solar_position, parse_requested_datetime
+from app.services.weather import WeatherUnavailable
 
 
 router = APIRouter()
@@ -102,6 +103,37 @@ def weather_period(request: Request) -> dict:
         "end": end.isoformat(),
         "latest_observation": end.isoformat(),
         "latest_full_date": latest.isoformat(),
-        "realtime": False,
+        "realtime": settings.kma_apihub_key is not None,
         "station": "청주 ASOS (131)",
+    }
+
+
+@router.get("/api/microclimate")
+def microclimate(
+    request: Request,
+    datetime_value: Annotated[datetime | None, Query(alias="datetime")] = None,
+    date_value: Annotated[date | None, Query(alias="date")] = None,
+    time_value: Annotated[time | None, Query(alias="time")] = None,
+) -> dict:
+    """Estimated UTCI (felt temperature) on a campus grid for one instant."""
+    try:
+        when = parse_requested_datetime(datetime_value, date_value, time_value)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+    try:
+        weather = request.app.state.weather.at(when)
+    except WeatherUnavailable as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    solar = calculate_solar_position(when, settings.campus_latitude, settings.campus_longitude)
+    result = request.app.state.microclimate.compute(when, solar, weather)
+    return {
+        "datetime": when.isoformat(),
+        "timezone": "Asia/Seoul",
+        "solar": _solar_payload(solar),
+        "weather": weather.as_dict(),
+        **result,
+        "note": "추정치입니다. 그림자·천공률·지표면을 반영하고, 기온·습도·바람은 캠퍼스 전체에 "
+        "같은 기상청 값을 씁니다.",
     }
