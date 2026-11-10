@@ -11,6 +11,8 @@ def _data_path(env_name: str, filename: str) -> Path:
 
 @dataclass(frozen=True)
 class Settings:
+    database_url: str | None = os.getenv("DATABASE_URL")
+    building_data_path: Path = _data_path("BUILDING_DATA_PATH", "cbnu_buildings.geojson")
     weather_data_path: Path = _data_path("WEATHER_DATA_PATH", "kma_asos_131_hourly.csv")
     timezone: str = "Asia/Seoul"
     projected_crs: str = "EPSG:5179"
