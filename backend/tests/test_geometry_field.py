@@ -119,3 +119,14 @@ def test_leaf_season() -> None:
     assert in_leaf(SUMMER)
     assert not in_leaf(WINTER)
     assert not in_leaf(date(2026, 11, 20))
+
+
+def test_geometry_fields_carry_sun_sky_and_ground_per_cell() -> None:
+    model = scene(buildings=[(square(0, 0, 10), 20.0)])
+    fields = model.at(SolarPosition(altitude=45, azimuth=180), SUMMER)
+    assert fields.valid is model.valid
+    assert fields.sunlit[cell_at(model, 0, 15)] == pytest.approx(0.0)
+    assert np.nanmax(fields.sky_view) <= 1.0
+    # Under the building there is no open ground; it takes the default (paved) surface.
+    assert np.all(np.isfinite(fields.albedo)) and np.all(np.isfinite(fields.heating))
+    assert fields.albedo[cell_at(model, 0, 0)] == pytest.approx(0.12)
