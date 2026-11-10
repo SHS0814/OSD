@@ -11,8 +11,10 @@ Street trees are not in the 토지피복지도 - a tree-lined road is classified
 road - and are added separately in data/cbnu_street_trees.geojson.
 
 Input: the two 세분류 SHP folders in data/raw/landcover/ (도엽 36706049,
-36706059; see docs/03-data-collection.md). data/raw is not committed; the
-output is.
+36706059). data/raw is not committed; the output is. To get them:
+환경공간정보서비스 (aid.mcee.go.kr) → 자료신청 → 온라인 자료신청 → 토지피복지도
+세분류, latest edition, the two 도엽 above; download from 온라인 자료신청 내역
+once approved. The SHPs are CP949-encoded.
 
     python scripts/build_landcover.py
 """
@@ -68,7 +70,7 @@ DEFAULT_SURFACE = "paved"  # every 시가화건조지역 class (1xx)
 def main() -> None:
     folders = sorted(RAW_DIR.glob("SG05_*"))
     if not folders:
-        raise SystemExit(f"no 토지피복지도 folders in {RAW_DIR} (see docs/03-data-collection.md)")
+        raise SystemExit(f"no 토지피복지도 folders in {RAW_DIR} (see this script's docstring)")
     frames = [gpd.read_file(next(folder.glob("*.shp")), encoding="cp949") for folder in folders]
     cover = pd.concat(frames, ignore_index=True).to_crs(CRS)
 
