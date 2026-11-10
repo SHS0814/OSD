@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from app.services.comfort import comfort_fields
+from app.services.comfort import comfort_fields, summary
 from app.services.solar import SolarPosition
 from fakes import fixed_weather, sunny_geometry
 
@@ -45,3 +45,8 @@ def test_cells_that_are_not_valid_have_no_value_and_do_not_count() -> None:
     geometry.valid[:5] = False
     fields = comfort_fields(geometry, weather.when, SUN, weather, weather.wind_ms)
     assert np.isnan(fields.utci[:5]).all() and np.isfinite(fields.utci[5:]).all()
+    stats = summary(fields, geometry.valid)
+    assert stats["cell_count"] == int(geometry.valid.sum())
+    assert stats["utci_min"] <= stats["utci_mean"] <= stats["utci_max"]
+    assert sum(stats["categories"].values()) == stats["cell_count"]
+    assert stats["sunlit_share"] == 1.0
