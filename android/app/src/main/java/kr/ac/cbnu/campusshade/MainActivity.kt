@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     private var followingNow = true
     private var is3d = true
     private var showHeatmap = true
+    private var showSatellite = true
 
     // Shadows and felt temperature are shown for today when the server keeps its
     // weather current (API허브), otherwise for the last fully observed day.
@@ -126,9 +127,11 @@ class MainActivity : AppCompatActivity() {
 
         binding.mapSettingsButton.setOnClickListener { mapSettings.show() }
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
+        mapSettings.onSatellitePicked = { if (it != showSatellite) toggleBaseMap() }
         mapSettings.onHeatmapPicked = { if (it != showHeatmap) toggleLayerMode() }
         updateViewModeButton()
         updateLayerMode()
+        updateBaseMapButton()
     }
 
     private fun toggleViewMode() {
@@ -155,6 +158,20 @@ class MainActivity : AppCompatActivity() {
             it.heatmap.setVisible(showHeatmap)
             it.shadows.setVisible(!showHeatmap)
         }
+    }
+
+    private fun toggleBaseMap() {
+        showSatellite = !showSatellite
+        updateBaseMap()
+    }
+
+    private fun updateBaseMapButton() = mapSettings.showSatellite(showSatellite)
+
+    // 위성사진은 기본 지도 위, 라벨 아래에 깔아서 도로명·건물명은 그대로 보이게 한다.
+    private fun updateBaseMap() {
+        updateBaseMapButton()
+        layers?.satellite?.setVisible(showSatellite)
+        layers?.heatmap?.setOverSatellite(showSatellite)
     }
 
     private fun pickDate() {
@@ -205,12 +222,14 @@ class MainActivity : AppCompatActivity() {
     private fun installDataLayers(style: Style) {
         layers = MapLayers(style, this)
         updateLayerMode()
+        updateBaseMap()
     }
 
     private fun showHeatmap(heatmap: UtciHeatmap) {
         val layers = layers ?: return
         if (layers.heatmap.show(heatmap)) {
             updateLayerMode()
+            updateBaseMap()
         } else {
             updateLayerMode()
         }

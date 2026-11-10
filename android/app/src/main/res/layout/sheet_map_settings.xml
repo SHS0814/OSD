@@ -32,6 +32,25 @@
 
     <TextView
         style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_base" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/baseMapGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/baseMapSatellite"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_satellite" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/baseMapNormal"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_basemap" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
         android:text="@string/map_settings_layer" />
 
     <com.google.android.material.button.MaterialButtonToggleGroup

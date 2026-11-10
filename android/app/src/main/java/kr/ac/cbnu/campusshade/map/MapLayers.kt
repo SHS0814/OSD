@@ -12,6 +12,7 @@ import org.maplibre.android.maps.Style
  * pins and the sensors are drawn over the labels.
  */
 class MapLayers(style: Style, context: Context) {
+    val satellite = SatelliteLayer(style)
     val shadows = ShadowLayer(style)
     val buildings = BuildingLayer(style)
     val heatmap = HeatmapLayer(style)
