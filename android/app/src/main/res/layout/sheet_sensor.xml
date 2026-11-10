@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 지도에서 누른 센서: 이름, 측정값(아직 자리표시), 설치 정보. 줄은 MainActivity가 item_info_row로 채운다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="20dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="20dp">
+
+    <TextView
+        android:id="@+id/sensorTitle"
+        style="@style/CampusShade.SheetTitle" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/sensor_subtitle"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp" />
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/sensor_readings" />
+
+    <LinearLayout
+        android:id="@+id/sensorReadingRows"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="vertical" />
+
+    <TextView
+        android:id="@+id/sensorReadingNote"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="@string/sensor_readings_pending"
+        android:textColor="@color/text_hint"
+        android:textSize="12sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:background="@color/divider" />
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:layout_marginTop="12dp"
+        android:text="@string/sensor_site" />
+
+    <LinearLayout
+        android:id="@+id/sensorSiteRows"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="vertical" />
+</LinearLayout>

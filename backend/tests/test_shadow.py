@@ -1,4 +1,3 @@
-import math
 
 import pytest
 from shapely.geometry import box

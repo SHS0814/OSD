@@ -7,8 +7,11 @@ contours (N3L_F0010000) and spot heights (N3P_F0020000), so the grid is
 interpolated from those: linear on their Delaunay triangulation.
 
 Input: the two 수치지도 v2.0 SHP zips in data/raw/수치지도/ (도엽 36706049,
-36706059; see docs/03-data-collection.md for how to get them). data/raw is not
-committed; the output grid is.
+36706059). data/raw is not committed; the output grid is. To get them:
+국토정보플랫폼 (map.ngii.go.kr) → 국토정보맵 → 간편지도 검색 → 행정구역 →
+충청북도 청주시 서원구 → 수치지도, 1:5,000 ver2.0 SHP, the two 도엽 above
+(login needed; the download helper runs on Windows only). The layers are
+EPSG:5186 and CP949-encoded.
 
     python scripts/build_terrain.py
 """
@@ -77,7 +80,7 @@ def sample_points(zips: list[Path]) -> tuple[np.ndarray, np.ndarray, dict]:
 def main() -> None:
     zips = sorted(RAW_DIR.glob("*.zip"))
     if not zips:
-        raise SystemExit(f"no 수치지도 zips in {RAW_DIR} (see docs/03-data-collection.md)")
+        raise SystemExit(f"no 수치지도 zips in {RAW_DIR} (see this script's docstring)")
 
     boundary = gpd.GeoSeries(
         [shape(json.loads(BOUNDARY_PATH.read_text(encoding="utf-8"))["features"][0]["geometry"])],
