@@ -31,6 +31,11 @@ services:
       LANDCOVER_DATA_PATH: /data/cbnu_landcover.geojson
       STREET_TREES_DATA_PATH: /data/cbnu_street_trees.geojson
       KMA_APIHUB_KEY: ${KMA_APIHUB_KEY:-}
+      VWORLD_API_KEY: ${VWORLD_API_KEY:-}
+      VWORLD_DOMAIN: ${VWORLD_DOMAIN:-http://localhost}
+      SATELLITE_CACHE_DIR: /cache/vworld_satellite
+    volumes:
+      - satellite_cache:/cache/vworld_satellite
     depends_on:
       db:
         condition: service_healthy
@@ -48,3 +53,4 @@ services:
 
 volumes:
   postgres_data:
+  satellite_cache:

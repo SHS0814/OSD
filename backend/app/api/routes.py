@@ -1,10 +1,11 @@
 from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from shapely.geometry import mapping
 
 from app.config import settings
+from app.services import vworld_tiles
 from app.services.geometry import to_wgs84
 from app.services.shadow import building_shadows
 from app.services.solar import calculate_solar_position, parse_requested_datetime
@@ -37,6 +38,20 @@ def buildings(request: Request) -> dict:
             for building in records
         ]
     )
+
+
+@router.get("/api/tiles/satellite/{z}/{x}/{y}.jpeg")
+def satellite_tile(z: int, x: int, y: int) -> Response:
+    """VWorld aerial photo tile for the app's base map (campus area only)."""
+    try:
+        data = vworld_tiles.get_tile(
+            settings.vworld_api_key, settings.vworld_domain, settings.satellite_cache_dir, z, x, y
+        )
+    except vworld_tiles.TileUnavailable as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except OSError as error:
+        raise HTTPException(status_code=502, detail="VWorld tile request failed") from error
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=604800"})
 
 
 @router.get("/api/shadows")
