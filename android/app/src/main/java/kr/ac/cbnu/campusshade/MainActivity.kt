@@ -11,10 +11,12 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.map.MapLayers
+import kr.ac.cbnu.campusshade.ui.MapSettingsSheet
 import kr.ac.cbnu.campusshade.ui.TimeSheet
 import okhttp3.Call
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
@@ -33,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var api: ApiClient
     // 시각 선택과 지도 설정은 바텀시트에 담는다. 한 번 만들어 두고 다시 연다.
     private lateinit var timeSheet: TimeSheet
+    private lateinit var mapSettings: MapSettingsSheet
     private val handler = Handler(Looper.getMainLooper())
     private var map: MapLibreMap? = null
     private var mapStyle: Style? = null
@@ -41,6 +44,7 @@ class MainActivity : AppCompatActivity() {
     private var selectedMinutes = 14 * 60
     // 시각 카드의 "현재 시각"/"선택 시각": 날짜나 시각을 직접 고르면 false
     private var followingNow = true
+    private var is3d = true
 
     private var dataDate: LocalDate = LocalDate.now(SEOUL_ZONE)
     private val debounceRequest = Runnable { requestForSelectedTime() }
@@ -65,6 +69,7 @@ class MainActivity : AppCompatActivity() {
 
         api = ApiClient(this) { binding.statusText.text = it }
         timeSheet = TimeSheet(this, binding)
+        mapSettings = MapSettingsSheet(this)
 
         setToCurrentTime(requestImmediately = false)
         configureControls()
@@ -103,7 +108,20 @@ class MainActivity : AppCompatActivity() {
             setToCurrentTime(requestImmediately = true)
             updateDataDateLabel()
         }
+
+        binding.mapSettingsButton.setOnClickListener { mapSettings.show() }
+        mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
+        updateViewModeButton()
     }
+
+    private fun toggleViewMode() {
+        is3d = !is3d
+        val tilt = if (is3d) MapStyle.TILT_3D else 0.0
+        map?.animateCamera(CameraUpdateFactory.tiltTo(tilt), 600)
+        updateViewModeButton()
+    }
+
+    private fun updateViewModeButton() = mapSettings.show3d(is3d)
 
     private fun setToCurrentTime(requestImmediately: Boolean) {
         val now = LocalDateTime.now(SEOUL_ZONE)
@@ -173,6 +191,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         shadowCall?.cancel()
         timeSheet.dismiss()
+        mapSettings.dismiss()
         handler.removeCallbacksAndMessages(null)
         binding.mapView.onDestroy()
         super.onDestroy()

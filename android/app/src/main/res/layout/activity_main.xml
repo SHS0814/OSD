@@ -19,6 +19,23 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
+        <!-- 검색창 오른쪽 아래: 지도 설정 -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/mapSettingsButton"
+            style="@style/CampusShade.RoundButton"
+            android:layout_gravity="top|end"
+            android:layout_marginTop="76dp"
+            android:layout_marginEnd="16dp"
+            android:contentDescription="@string/map_settings">
+
+            <ImageView
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:importantForAccessibility="no"
+                android:src="@drawable/ic_layers" />
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- 아래쪽: 날씨·나침반·내 위치·시각, 선택한 건물, 범례와 상태 -->
         <LinearLayout
             android:id="@+id/bottomContainer"
