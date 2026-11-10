@@ -164,3 +164,26 @@ def test_route_from_off_campus_is_refused() -> None:
                     "datetime": "2026-08-07T15:00:00+09:00"},
         )
     assert response.status_code == 422
+
+
+def test_weather_for_an_observed_instant() -> None:
+    with TestClient(app) as client:
+        payload = client.get("/api/weather", params={"datetime": "2026-08-07T15:00:00+09:00"}).json()
+    assert payload["latest"] is False
+    assert payload["weather"]["station"] == "청주 ASOS (131)"
+    assert payload["solar"]["altitude"] > 0
+
+
+def test_weather_now_falls_back_to_the_latest_observation() -> None:
+    with TestClient(app) as client:
+        period = client.get("/api/weather/period").json()
+        payload = client.get("/api/weather").json()
+    # The committed snapshot ends before today, so without an API허브 key "now" is the latest hour.
+    if payload["latest"]:
+        assert payload["datetime"] == period["latest_observation"]
+
+
+def test_weather_outside_the_snapshot_is_404() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/weather", params={"datetime": "2020-01-01T12:00:00+09:00"})
+    assert response.status_code == 404
