@@ -8,6 +8,8 @@ object MapStyle {
     const val BUILDING_LAYER = "campus-buildings-extrusion"
     const val SHADOW_SOURCE = "campus-shadows"
     const val SHADOW_LAYER = "campus-shadows-fill"
+    const val HEATMAP_SOURCE = "campus-utci"
+    const val HEATMAP_LAYER = "campus-utci-raster"
 
     val buildingFillColor: Int = Color.rgb(214, 137, 60)
     // 높이 정보가 없어 그림자를 계산하지 않는 건물
@@ -16,6 +18,7 @@ object MapStyle {
     const val BUILDING_OPACITY = 0.9f
     const val UNKNOWN_HEIGHT_M = 3f
     const val SHADOW_OPACITY = 0.58f
+    const val HEATMAP_OPACITY = 0.78f
 
     const val TILT_3D = 55.0
 }

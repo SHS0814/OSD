@@ -29,4 +29,23 @@
             style="@style/CampusShade.ToggleButton"
             android:text="@string/view_2d" />
     </com.google.android.material.button.MaterialButtonToggleGroup>
+
+    <TextView
+        style="@style/CampusShade.SheetLabel"
+        android:text="@string/map_settings_layer" />
+
+    <com.google.android.material.button.MaterialButtonToggleGroup
+        android:id="@+id/layerModeGroup"
+        style="@style/CampusShade.ToggleGroup">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/layerHeatmap"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_heatmap" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/layerShadow"
+            style="@style/CampusShade.ToggleButton"
+            android:text="@string/show_shadows" />
+    </com.google.android.material.button.MaterialButtonToggleGroup>
 </LinearLayout>

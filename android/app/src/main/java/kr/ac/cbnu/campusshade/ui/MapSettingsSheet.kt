@@ -15,10 +15,14 @@ class MapSettingsSheet(activity: AppCompatActivity) {
     private val dialog = BottomSheetDialog(activity).apply { setContentView(sheet.root) }
 
     var on3dPicked: (Boolean) -> Unit = {}
+    var onHeatmapPicked: (Boolean) -> Unit = {}
 
     init {
         sheet.viewModeGroup.addOnButtonCheckedListener { _, id, checked ->
             if (checked) on3dPicked(id == R.id.viewMode3d)
+        }
+        sheet.layerModeGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (checked) onHeatmapPicked(id == R.id.layerHeatmap)
         }
     }
 
@@ -27,4 +31,6 @@ class MapSettingsSheet(activity: AppCompatActivity) {
     fun dismiss() = dialog.dismiss()
 
     fun show3d(is3d: Boolean) = sheet.viewModeGroup.check(if (is3d) R.id.viewMode3d else R.id.viewMode2d)
+
+    fun showHeatmap(heatmap: Boolean) = sheet.layerModeGroup.check(if (heatmap) R.id.layerHeatmap else R.id.layerShadow)
 }
