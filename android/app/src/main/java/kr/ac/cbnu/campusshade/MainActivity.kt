@@ -11,6 +11,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.map.MapLayers
+import kr.ac.cbnu.campusshade.ui.Legend
 import kr.ac.cbnu.campusshade.ui.MapSettingsSheet
 import kr.ac.cbnu.campusshade.ui.TimeSheet
 import okhttp3.Call
@@ -22,6 +23,7 @@ import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -36,15 +38,18 @@ class MainActivity : AppCompatActivity() {
     // 시각 선택과 지도 설정은 바텀시트에 담는다. 한 번 만들어 두고 다시 연다.
     private lateinit var timeSheet: TimeSheet
     private lateinit var mapSettings: MapSettingsSheet
+    private lateinit var legend: Legend
     private val handler = Handler(Looper.getMainLooper())
     private var map: MapLibreMap? = null
     private var mapStyle: Style? = null
     private var layers: MapLayers? = null
     private var shadowCall: Call? = null
+    private var microclimateCall: Call? = null
     private var selectedMinutes = 14 * 60
     // 시각 카드의 "현재 시각"/"선택 시각": 날짜나 시각을 직접 고르면 false
     private var followingNow = true
     private var is3d = true
+    private var showHeatmap = true
 
     private var dataDate: LocalDate = LocalDate.now(SEOUL_ZONE)
     private val debounceRequest = Runnable { requestForSelectedTime() }
@@ -70,6 +75,7 @@ class MainActivity : AppCompatActivity() {
         api = ApiClient(this) { binding.statusText.text = it }
         timeSheet = TimeSheet(this, binding)
         mapSettings = MapSettingsSheet(this)
+        legend = Legend(binding.legend)
 
         setToCurrentTime(requestImmediately = false)
         configureControls()
@@ -111,7 +117,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.mapSettingsButton.setOnClickListener { mapSettings.show() }
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
+        mapSettings.onHeatmapPicked = { if (it != showHeatmap) toggleLayerMode() }
         updateViewModeButton()
+        updateLayerMode()
     }
 
     private fun toggleViewMode() {
@@ -122,6 +130,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateViewModeButton() = mapSettings.show3d(is3d)
+
+    // The heatmap already accounts for shade, so it replaces the shadow layer
+    // instead of being drawn on top of it.
+    private fun toggleLayerMode() {
+        showHeatmap = !showHeatmap
+        updateLayerMode()
+        requestForSelectedTime()
+    }
+
+    private fun updateLayerMode() {
+        mapSettings.showHeatmap(showHeatmap)
+        legend.setVisible(showHeatmap)
+        layers?.let {
+            it.heatmap.setVisible(showHeatmap)
+            it.shadows.setVisible(!showHeatmap)
+        }
+    }
 
     private fun setToCurrentTime(requestImmediately: Boolean) {
         val now = LocalDateTime.now(SEOUL_ZONE)
@@ -147,6 +172,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun installDataLayers(style: Style) {
         layers = MapLayers(style, this)
+        updateLayerMode()
+    }
+
+    private fun showHeatmap(heatmap: UtciHeatmap) {
+        val layers = layers ?: return
+        if (layers.heatmap.show(heatmap)) {
+            updateLayerMode()
+        } else {
+            updateLayerMode()
+        }
     }
 
     private fun requestBuildings() {
@@ -157,7 +192,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestForSelectedTime() {
         if (mapStyle == null) return
-        requestShadows()
+        if (showHeatmap) requestMicroclimate() else requestShadows()
     }
 
     private fun selectedDateTime(): String =
@@ -180,6 +215,38 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun requestMicroclimate() {
+        microclimateCall?.cancel()
+        binding.statusText.text = getString(R.string.loading_microclimate)
+        val url = api.url("api/microclimate")
+            .addQueryParameter("datetime", selectedDateTime())
+            .build()
+        microclimateCall = api.fetchJson(
+            url,
+            microclimateCall,
+            onError = { code ->
+                if (code == 404) layers?.heatmap?.setVisible(false)
+            },
+            parse = UtciHeatmap::fromResponse,
+        ) { root, heatmap ->
+            showHeatmap(heatmap)
+            val summary = root.getJSONObject("summary")
+            val airTemp = root.getJSONObject("weather").getDouble("air_temp_c")
+            val sunUp = root.getJSONObject("solar").getDouble("altitude") > 0
+            binding.statusText.text = if (sunUp) {
+                getString(
+                    R.string.utci_summary,
+                    airTemp,
+                    summary.getDouble("utci_min"),
+                    summary.getDouble("utci_max"),
+                    summary.getDouble("utci_mean"),
+                )
+            } else {
+                getString(R.string.utci_night, airTemp, summary.getDouble("utci_mean"))
+            }
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         binding.mapView.onStart()
@@ -190,6 +257,7 @@ class MainActivity : AppCompatActivity() {
     override fun onLowMemory() { super.onLowMemory(); binding.mapView.onLowMemory() }
     override fun onDestroy() {
         shadowCall?.cancel()
+        microclimateCall?.cancel()
         timeSheet.dismiss()
         mapSettings.dismiss()
         handler.removeCallbacksAndMessages(null)

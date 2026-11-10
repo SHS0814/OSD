@@ -14,4 +14,5 @@ import org.maplibre.android.maps.Style
 class MapLayers(style: Style, context: Context) {
     val shadows = ShadowLayer(style)
     val buildings = BuildingLayer(style)
+    val heatmap = HeatmapLayer(style)
 }
