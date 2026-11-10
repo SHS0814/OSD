@@ -1,11 +1,15 @@
+# The image needs only backend/ and the processed files in data/ (backend/Dockerfile).
 .git
 .env
 .venv
+.idea
+**/.DS_Store
 **/__pycache__
 **/.pytest_cache
-android/.gradle
-android/**/build
 *.pyc
+android
+docs
+scripts
 
 data/raw
-docs
+data/opensrc_*.csv
