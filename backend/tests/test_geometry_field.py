@@ -11,6 +11,7 @@ from shapely.geometry import Polygon, box
 from app.services.geometry import to_projected, to_wgs84
 from app.services.geometry_field import GeometryField
 from app.services.grid import CELL_M
+from app.services.solar import SolarPosition
 from app.services.surfaces import Canopy, CanopyPatch, in_leaf, load_street_trees
 from app.services.terrain import Terrain
 
@@ -43,6 +44,40 @@ def cell_at(model, x: float, y: float) -> tuple[int, int]:
     col = int((CENTRE.x + x - model.grid.origin_x) / CELL_M)
     row = int((model.grid.origin_y - (CENTRE.y + y)) / CELL_M)
     return row, col
+
+
+def test_open_ground_is_in_full_sun() -> None:
+    model = scene()
+    sunlit = model.sunlit_fraction(SolarPosition(altitude=60, azimuth=180), SUMMER)
+    assert np.nanmin(sunlit) == pytest.approx(1.0)
+
+
+def test_a_crown_lets_through_its_transmissivity() -> None:
+    model = scene(canopies=[square(0, 0, 30)])
+    sun = SolarPosition(altitude=60, azimuth=180)
+    under = cell_at(model, 0, 0)
+    assert model.sunlit_fraction(sun, SUMMER)[under] == pytest.approx(0.2)
+    assert model.sunlit_fraction(sun, WINTER)[under] == pytest.approx(0.6)
+    assert model.sunlit_fraction(sun, SUMMER)[cell_at(model, 0, -80)] == pytest.approx(1.0)
+
+
+def test_a_building_shades_the_side_away_from_the_sun() -> None:
+    # 20 m tall; noon sun from the south at 45° casts 20 m of shadow northwards.
+    model = scene(buildings=[(square(0, 0, 10), 20.0)])
+    sunlit = model.sunlit_fraction(SolarPosition(altitude=45, azimuth=180), SUMMER)
+    assert sunlit[cell_at(model, 0, 15)] == pytest.approx(0.0)
+    assert sunlit[cell_at(model, 0, -25)] == pytest.approx(1.0)
+    assert sunlit[cell_at(model, 0, 45)] == pytest.approx(1.0)
+
+
+def test_sun_at_points_sees_the_shade_edge_a_cell_mean_blurs() -> None:
+    # A 20 m building's shadow ends 20 m north of its north wall (y = 10 + 20).
+    model = scene(buildings=[(square(0, 0, 10), 20.0)])
+    sun = SolarPosition(altitude=45, azimuth=180)
+    x = np.array([CENTRE.x, CENTRE.x, CENTRE.x])
+    y = CENTRE.y + np.array([25.0, 35.0, -25.0])
+    assert model.sunlit_at(sun, SUMMER, x, y).tolist() == pytest.approx([0.0, 1.0, 1.0])
+    assert model.sunlit_at(SolarPosition(altitude=-5, azimuth=0), SUMMER, x, y).tolist() == [0.0] * 3
 
 
 def test_terrain_samples_bilinearly(tmp_path) -> None:

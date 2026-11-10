@@ -21,6 +21,7 @@ output cells (grid.py).
 from __future__ import annotations
 
 import math
+from datetime import date
 
 import numpy as np
 import shapely
@@ -28,6 +29,7 @@ from shapely.geometry.base import BaseGeometry
 
 from .geometry import to_projected
 from .grid import CELL_M, FINE_M, MAX_BUILDING_SHARE, PAD, SUBCELLS, GridSpec, ray_distances
+from .solar import SolarPosition
 from .surfaces import (
     CROWN_BASE_M,
     DEFAULT_SURFACE,
@@ -37,6 +39,11 @@ from .surfaces import (
     GroundPatch,
 )
 from .terrain import Terrain
+
+# Rays start at a pedestrian's chest rather than the ground, so the facets of
+# the triangulated terrain do not shade the very pixel they start from.
+OBSERVER_M = 1.1
+SHADOW_RANGE_M = 300.0
 
 
 class GeometryField:
@@ -82,6 +89,8 @@ class GeometryField:
         self.canopy_cover = self._to_cells(
             (open_ground & (self.canopy_kind[self.window] >= 0)).astype(float)
         )
+
+        self._prepare_shadow_targets(open_ground)
 
     # -- building the surface model ------------------------------------------------
 
@@ -140,3 +149,67 @@ class GeometryField:
     def _to_cells(self, fine: np.ndarray) -> np.ndarray:
         rows, cols = self.grid.rows, self.grid.cols
         return fine.reshape(rows, SUBCELLS, cols, SUBCELLS).mean(axis=(1, 3))
+
+    def _prepare_shadow_targets(self, open_ground: np.ndarray) -> None:
+        """Open-ground fine pixels of the valid cells, which are all that need rays."""
+        valid_fine = np.repeat(np.repeat(self.valid, SUBCELLS, axis=0), SUBCELLS, axis=1)
+        rows, cols = np.nonzero(valid_fine & open_ground)
+        self.target_rows = rows + PAD
+        self.target_cols = cols + PAD
+        self.target_cell = (rows // SUBCELLS) * self.grid.cols + cols // SUBCELLS
+        self.target_count = np.bincount(self.target_cell, minlength=self.valid.size)
+
+    # -- per instant ---------------------------------------------------------------
+
+    def _transmissivity_lookup(self, day: date) -> np.ndarray:
+        """Per canopy type index -> transmissivity; the extra last entry (index -1) is open sky."""
+        return np.array([canopy.transmissivity(day) for canopy in self.canopy_types] + [1.0])
+
+    def _trace_sun(self, rows: np.ndarray, cols: np.ndarray, solar: SolarPosition, day: date) -> np.ndarray:
+        """Direct-sun share reaching OBSERVER_M above the given fine pixels (sun above the horizon)."""
+        lookup = self._transmissivity_lookup(day)
+        tan_altitude = math.tan(math.radians(solar.altitude))
+        dx = math.sin(math.radians(solar.azimuth)) / FINE_M
+        dy = math.cos(math.radians(solar.azimuth)) / FINE_M
+        n_rows, n_cols = self.fine_x.shape
+
+        z = self.ground[rows, cols] + OBSERVER_M
+        # A pedestrian under a crown starts in its shade.
+        own = self.canopy_kind[rows, cols]
+        transmitted = np.where(self.canopy_top[rows, cols] > z, lookup[own], 1.0)
+        blocked = np.zeros(z.shape, dtype=bool)
+        highest = max(float(self.solid.max()), float(self.canopy_top.max()))
+        limit = min(SHADOW_RANGE_M, (highest - float(z.min())) / tan_altitude)
+        for distance in ray_distances(limit):
+            row = np.round(rows - dy * distance).astype(int)
+            col = np.round(cols + dx * distance).astype(int)
+            np.clip(row, 0, n_rows - 1, out=row)
+            np.clip(col, 0, n_cols - 1, out=col)
+            ray = z + distance * tan_altitude
+            blocked |= self.solid[row, col] > ray
+            in_crown = (self.canopy_top[row, col] > ray) & (self.ground[row, col] + CROWN_BASE_M < ray)
+            transmitted = np.where(in_crown, np.minimum(transmitted, lookup[self.canopy_kind[row, col]]), transmitted)
+        return np.where(blocked, 0.0, transmitted)
+
+    def fine_pixel(self, x: np.ndarray, y: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Fine raster (row, col) of projected points; only meaningful inside the raster."""
+        col = ((np.asarray(x) - self.fine_origin_x) // FINE_M).astype(int)
+        row = ((self.fine_origin_y - np.asarray(y)) // FINE_M).astype(int)
+        return row, col
+
+    def sunlit_at(self, solar: SolarPosition, day: date, x: np.ndarray, y: np.ndarray) -> np.ndarray:
+        """Direct-sun share at single points (projected), e.g. sensors, rather than cell means."""
+        if solar.altitude <= 0:
+            return np.zeros(np.shape(x))
+        row, col = self.fine_pixel(x, y)
+        return self._trace_sun(row, col, solar, day)
+
+    def sunlit_fraction(self, solar: SolarPosition, day: date) -> np.ndarray:
+        """Direct-sun share of the open ground in each cell: 0 in full shade, 1 in full sun."""
+        if solar.altitude <= 0:
+            return np.where(self.valid, 0.0, np.nan)
+        sun = self._trace_sun(self.target_rows, self.target_cols, solar, day)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            per_cell = np.bincount(self.target_cell, weights=sun, minlength=self.valid.size) / self.target_count
+        return np.where(self.valid, per_cell.reshape(self.valid.shape), np.nan)
