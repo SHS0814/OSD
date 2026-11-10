@@ -63,3 +63,10 @@ def test_datetime_is_required() -> None:
             "/api/shadows", params={"lat": 36.6268, "lon": 127.4583}
         )
     assert response.status_code == 422
+
+
+def test_weather_period_names_the_latest_full_date() -> None:
+    with TestClient(app) as client:
+        payload = client.get("/api/weather/period").json()
+    assert payload["start"].startswith("2025-06-01T00:00")
+    assert payload["latest_full_date"] == payload["end"][:10]

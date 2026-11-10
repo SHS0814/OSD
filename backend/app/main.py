@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.routes import router
 from app.config import settings
 from app.db.repository import BuildingRepository
+from app.services.weather import WeatherStore
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -13,6 +14,9 @@ async def lifespan(app: FastAPI):
         snapshot_path=settings.building_data_path,
     )
     app.state.buildings.synchronize_snapshot()
+    app.state.weather = WeatherStore(
+        settings.weather_data_path, settings.campus_latitude, settings.campus_longitude
+    )
     yield
 
 

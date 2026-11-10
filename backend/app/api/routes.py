@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -88,4 +88,20 @@ def _solar_payload(solar) -> dict:
     return {
         "altitude": round(solar.altitude, 6),
         "azimuth": round(solar.azimuth, 6),
+    }
+
+
+@router.get("/api/weather/period")
+def weather_period(request: Request) -> dict:
+    """Range of the weather snapshot, so a client can pick a date it can ask about."""
+    start, end = request.app.state.weather.period
+    # The last date with all 24 hours observed.
+    latest = end.date() if end.hour == 23 else end.date() - timedelta(days=1)
+    return {
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "latest_observation": end.isoformat(),
+        "latest_full_date": latest.isoformat(),
+        "realtime": False,
+        "station": "청주 ASOS (131)",
     }
