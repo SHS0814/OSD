@@ -7,6 +7,7 @@ from app.services.solar import SEOUL_TZ
 from app.services.weather import (
     WeatherStore,
     WeatherUnavailable,
+    clearness_from_cloud,
 )
 
 
@@ -46,3 +47,7 @@ def test_night_has_no_radiation(store: WeatherStore) -> None:
 def test_outside_snapshot_raises(store: WeatherStore) -> None:
     with pytest.raises(WeatherUnavailable):
         at(store, "2024-01-01T12:00")
+
+
+def test_clearness_from_cloud_is_lower_under_overcast() -> None:
+    assert clearness_from_cloud(0.0) > clearness_from_cloud(0.5) > clearness_from_cloud(1.0) > 0
