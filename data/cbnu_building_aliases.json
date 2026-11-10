@@ -1,0 +1,92 @@
+{
+  "description": "Campus knowledge that cannot be derived from OSM or the building ledger. OSM maps the dormitory towers individually, while 건축물대장 registers each complex as a single 동, so the two never join on name or code alone. Supplied by team members who know the campus; every entry records why it is safe to apply.",
+  "source": "team knowledge, 2026-09-23",
+  "complexes": [
+    {
+      "ledger_code": "E8-11",
+      "ledger_name": "남녀생활관 양진재(E8-11)",
+      "complex_name": "양진재",
+      "members": [
+        "예지관",
+        "인의관"
+      ],
+      "confidence": "high",
+      "rationale": "Ledger record is 14 floors and both towers are tagged 14 floors in OSM, so the registered height applies to each without scaling."
+    },
+    {
+      "ledger_code": "S17",
+      "ledger_name": "BTL학생생활관(S17)",
+      "complex_name": "양성재",
+      "members": [
+        "지선관 (S17-1)",
+        "명덕관 (S17-2)",
+        "신민관 (S17-3)"
+      ],
+      "confidence": "floors-differ",
+      "rationale": "One ledger record covers the whole complex at 14 floors, but the towers are 13, 10 and 7 floors. The registered height must NOT be copied to each; only a per-floor figure derived from the record would be defensible, and that is an estimate."
+    },
+    {
+      "ledger_code": "S17-4",
+      "ledger_name": "양현재(S17-4)",
+      "complex_name": "양현재",
+      "members": [
+        "청운관 (S17-5)",
+        "등용관 (S17-6)",
+        "양현재 관리동 (S17-7)"
+      ],
+      "confidence": "floors-differ",
+      "rationale": "양현재 itself is registered at 30.7 m over 9 floors. 청운관 has a ledger record with floors but no height; 등용관 and the management block have neither, so they stay empty. Membership of 관리동 is unconfirmed."
+    },
+    {
+      "ledger_code": "N12",
+      "ledger_name": "중앙도서관(N12)",
+      "complex_name": "중앙도서관",
+      "members": [
+        "중앙도서관 구관 (N12)",
+        "중앙도서관 신관 (N12)"
+      ],
+      "confidence": "high",
+      "rationale": "OSM splits the library into old and new wings; the ledger holds one record. Team confirms the two wings are close in height, the new wing marginally taller, so the single registered height applies to both."
+    }
+  ],
+  "buildings": [
+    {
+      "osm_name": "글로컬교육스포츠센터",
+      "ledger_code": "E4-1",
+      "ledger_name": "(E4-1)CBNU스포츠센터",
+      "rationale": "The ledger files this under dongNm \"주1\" and only names it in bldNm as \"(E4-1)CBNU스포츠센터\", so neither name nor code matching reaches it. Team identified the code; 4 floors on both sides and 3,895 m2 against a registered 4,471 m2 confirm it.",
+      "confidence": "team-identified"
+    },
+    {
+      "osm_name": "씨비엔유 스타",
+      "ledger_code": "N3-1",
+      "ledger_name": "N3-1동",
+      "rationale": "Team identified the building by its campus code; the ledger files it only as \"N3-1동\", which no automatic name or code match could reach. The OSM footprint (807 m2) is far larger than the registered 161 m2, so the outline likely takes in an adjoining structure - the 2-storey height still applies to the building itself.",
+      "confidence": "team-identified"
+    },
+    {
+      "osm_name": "이마트24 충북대대학본부점",
+      "ledger_code": "N3-2",
+      "ledger_name": "N3-2동",
+      "rationale": "Same: filed as \"N3-2동\". The OSM outline (690 m2) again exceeds the registered 92 m2, but the record is single-storey and the height is consistent with the low retail block by the main gate.",
+      "confidence": "team-identified"
+    }
+  ],
+  "unresolved": [
+    {
+      "name": "해오름관 (N23)",
+      "ledger_name": "해오름관(첨단강의동)",
+      "ledger_height_m": 24.6,
+      "reason": "The ledger has the height, but OSM has no building here at all, so there is no polygon to attach it to. Mapping it in OSM would make it usable."
+    },
+    {
+      "name": "정문테니스장 (N3)",
+      "reason": "A tennis court is not a building; the only ledger record is its 32 m2 keeper's shed."
+    },
+    {
+      "name": "본부관리동 (S3)",
+      "address": "충청북도 청주시 서원구 성봉로242번길 57",
+      "reason": "Address geocodes onto campus, but no ledger record on any nearby parcel matches its 997 m2 single-storey footprint, and no record is named 본부관리동."
+    }
+  ]
+}
