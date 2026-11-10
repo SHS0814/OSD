@@ -38,6 +38,15 @@
     <string name="show_basemap">일반</string>
     <string name="show_heatmap">체감온도</string>
     <string name="show_shadows">그림자</string>
+    <string name="map_settings_sensors">센서</string>
+    <string name="sensors_off">숨김</string>
+    <string name="sensors_on">센서 위치</string>
+
+    <!-- 센서 정보 -->
+    <string name="sensor_subtitle">캠퍼스 환경 센서</string>
+    <string name="sensor_readings">최근 측정값</string>
+    <string name="sensor_readings_pending">측정값은 준비 중이에요. 지금은 위치만 공개돼요.</string>
+    <string name="sensor_site">설치 정보</string>
 
     <!-- 내 위치 체감온도 -->
     <string name="felt_here">내 위치 체감 %1$d° · %2$s (추정)</string>
