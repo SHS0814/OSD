@@ -23,6 +23,10 @@ from .thermal import extraterrestrial_horizontal
 
 HOUR = timedelta(hours=1)
 
+# Below this much sun above the atmosphere the hour's clearness index is mostly
+# noise (the hour straddles sunrise), so it is estimated from cloud cover.
+MIN_RELIABLE_EXTRATERRESTRIAL = 100.0  # W/m²
+
 Row = dict[str, float | None]
 
 
@@ -35,6 +39,11 @@ def _number(value: str) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def clearness_from_cloud(cloud_fraction: float) -> float:
+    """Kasten-Czeplak: G = G_clear(1 - 0.75 N^3.4), with G_clear ≈ 0.75 G₀."""
+    return 0.75 * (1.0 - 0.75 * cloud_fraction**3.4)
 
 
 class WeatherStore:
@@ -86,8 +95,9 @@ class WeatherStore:
         midpoint = hour_end - HOUR / 2
         altitude = calculate_solar_position(midpoint, self.latitude, self.longitude).altitude
         extraterrestrial = extraterrestrial_horizontal(midpoint.timetuple().tm_yday, altitude)
-        if extraterrestrial <= 0:
-            return 0.0, mean_global
+        if extraterrestrial < MIN_RELIABLE_EXTRATERRESTRIAL:
+            cloud = min(max((row.get("cloud") or 0.0) / 10.0, 0.0), 1.0)
+            return clearness_from_cloud(cloud), mean_global
         return min(mean_global / extraterrestrial, 1.0), mean_global
 
     def at(self, when: datetime) -> WeatherSample:
