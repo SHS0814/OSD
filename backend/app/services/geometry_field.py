@@ -27,6 +27,7 @@ import numpy as np
 import shapely
 from shapely.geometry.base import BaseGeometry
 
+from .contracts import GeometryFields
 from .geometry import to_projected
 from .grid import CELL_M, FINE_M, MAX_BUILDING_SHARE, PAD, SUBCELLS, GridSpec, ray_distances
 from .solar import SolarPosition
@@ -261,3 +262,19 @@ class GeometryField:
         with np.errstate(invalid="ignore", divide="ignore"):
             per_cell = np.bincount(self.target_cell, weights=sun, minlength=self.valid.size) / self.target_count
         return np.where(self.valid, per_cell.reshape(self.valid.shape), np.nan)
+
+    def at(self, solar: SolarPosition, day: date) -> GeometryFields:
+        """Sun, sky and ground of every output cell for the comfort side."""
+        default = SURFACES[DEFAULT_SURFACE]
+        return GeometryFields(
+            valid=self.valid,
+            sunlit=self.sunlit_fraction(solar, day),
+            sky_view=self.sky_view(day),
+            # Cells with no open ground (all building) take the default surface.
+            albedo=np.nan_to_num(self.albedo, nan=default.albedo),
+            heating=np.nan_to_num(self.heating, nan=default.ground_heating),
+        )
+
+    def canopy_share(self) -> float:
+        """Share of the valid cells' open ground under crowns."""
+        return float(np.nanmean(np.where(self.valid, self.canopy_cover, np.nan)))
