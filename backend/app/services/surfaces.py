@@ -62,6 +62,15 @@ CANOPIES = {
     "tree_conifer": Canopy(height_m=12.0, transmissivity_leaf_on=0.20, transmissivity_leaf_off=0.20),
     "tree_mixed": Canopy(height_m=12.0, transmissivity_leaf_on=0.20, transmissivity_leaf_off=0.40),
 }
+# Street trees are usually younger and planted singly, so lower and thinner.
+STREET_TREE_DEFAULT_HEIGHT_M = 8.0
+STREET_TREE_DEFAULT_WIDTH_M = 6.0
+STREET_TREE_CANOPY = {
+    "broadleaf": Canopy(height_m=STREET_TREE_DEFAULT_HEIGHT_M, transmissivity_leaf_on=0.25,
+                        transmissivity_leaf_off=0.65),
+    "conifer": Canopy(height_m=STREET_TREE_DEFAULT_HEIGHT_M, transmissivity_leaf_on=0.25,
+                      transmissivity_leaf_off=0.25),
+}
 # Below this a ray passes under a crown rather than through it.
 CROWN_BASE_M = 2.5
 
@@ -87,3 +96,28 @@ def load_land_cover(path: Path) -> tuple[list[GroundPatch], list[CanopyPatch]]:
         if surface in CANOPIES:
             canopies.append(CanopyPatch(geometry, CANOPIES[surface]))
     return ground, canopies
+
+
+def load_street_trees(path: Path) -> list[CanopyPatch]:
+    """Rows of trees as lines (buffered by canopy width) or crowns as polygons.
+
+    Properties, all optional: ``leaf`` ("broadleaf" or "conifer"), ``height_m``,
+    ``canopy_width_m`` (lines only).
+    """
+    if not path.exists():
+        return []
+    patches = []
+    for feature in json.loads(path.read_text(encoding="utf-8"))["features"]:
+        properties = feature.get("properties") or {}
+        base = STREET_TREE_CANOPY.get(properties.get("leaf", "broadleaf"), STREET_TREE_CANOPY["broadleaf"])
+        canopy = Canopy(
+            height_m=float(properties.get("height_m") or base.height_m),
+            transmissivity_leaf_on=base.transmissivity_leaf_on,
+            transmissivity_leaf_off=base.transmissivity_leaf_off,
+        )
+        geometry = to_projected(shape(feature["geometry"]))
+        if geometry.geom_type in ("LineString", "MultiLineString"):
+            width = float(properties.get("canopy_width_m") or STREET_TREE_DEFAULT_WIDTH_M)
+            geometry = geometry.buffer(width / 2.0)
+        patches.append(CanopyPatch(geometry, canopy))
+    return patches
