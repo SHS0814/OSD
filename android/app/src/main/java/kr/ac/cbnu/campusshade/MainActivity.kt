@@ -1,27 +1,42 @@
 package kr.ac.cbnu.campusshade
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.DatePickerDialog
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.location.Location
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.map.MapLayers
+import kr.ac.cbnu.campusshade.ui.FeltHere
 import kr.ac.cbnu.campusshade.ui.Legend
 import kr.ac.cbnu.campusshade.ui.MapSettingsSheet
 import kr.ac.cbnu.campusshade.ui.RouteCard
 import kr.ac.cbnu.campusshade.ui.SearchPanel
 import kr.ac.cbnu.campusshade.ui.TimeSheet
+import kr.ac.cbnu.campusshade.ui.WeatherCard
 import okhttp3.Call
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.engine.LocationEngineCallback
+import org.maplibre.android.location.engine.LocationEngineRequest
+import org.maplibre.android.location.engine.LocationEngineResult
+import org.maplibre.android.location.modes.CameraMode
+import org.maplibre.android.location.modes.RenderMode
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import java.time.LocalDate
@@ -29,6 +44,7 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
 
 /**
  * The one screen. It keeps what has been chosen (time, layers, route ends,
@@ -43,13 +59,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mapSettings: MapSettingsSheet
     private lateinit var search: SearchPanel
     private lateinit var routeCard: RouteCard
+    private lateinit var weatherCard: WeatherCard
     private lateinit var legend: Legend
+    private lateinit var feltHere: FeltHere
     private val handler = Handler(Looper.getMainLooper())
     private var map: MapLibreMap? = null
     private var mapStyle: Style? = null
     private var layers: MapLayers? = null
     private var shadowCall: Call? = null
     private var microclimateCall: Call? = null
+    private var weatherCall: Call? = null
     private var selectedMinutes = 14 * 60
     // 시각 카드의 "현재 시각"/"선택 시각": 날짜나 시각을 직접 고르면 false
     private var followingNow = true
@@ -58,10 +77,31 @@ class MainActivity : AppCompatActivity() {
     private var showSatellite = true
     private var sensors: List<SensorSite> = emptyList()
 
+    // 내 위치 체감온도: '지금'의 UTCI 격자와 최근 위치
+    private var feltGrid: UtciGrid? = null
+    private var feltCall: Call? = null
+    private var myLocation: Location? = null
+    private var locationUpdatesOn = false
+    private val locationCallback = object : LocationEngineCallback<LocationEngineResult> {
+        override fun onSuccess(result: LocationEngineResult?) {
+            result?.lastLocation?.let { myLocation = it; updateFeltHere() }
+        }
+        override fun onFailure(exception: Exception) = Unit
+    }
+
     // 길찾기: 출발지·도착지(검색한 건물 또는 지도에서 길게 누른 곳)
     private var routeStart: Place? = null
     private var routeEnd: Place? = null
     private var routeCall: Call? = null
+
+    private val locationPermissionRequest =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { granted ->
+            if (granted.values.any { it }) {
+                showMyLocation()
+            } else {
+                Toast.makeText(this, R.string.location_denied, Toast.LENGTH_LONG).show()
+            }
+        }
 
     // Shadows and felt temperature are shown for today when the server keeps its
     // weather current (API허브), otherwise for the last fully observed day.
@@ -96,12 +136,15 @@ class MainActivity : AppCompatActivity() {
         mapSettings = MapSettingsSheet(this)
         search = SearchPanel(this, binding)
         routeCard = RouteCard(binding)
+        weatherCard = WeatherCard(this, binding)
         legend = Legend(binding.legend)
+        feltHere = FeltHere(this, binding)
 
         setToCurrentTime(requestImmediately = false)
         configureControls()
         configureSearch()
         updateDataDateLabel()
+        requestWeather()
         binding.mapView.getMapAsync { mapLibreMap ->
             map = mapLibreMap
             mapLibreMap.cameraPosition = CameraPosition.Builder()
@@ -109,16 +152,21 @@ class MainActivity : AppCompatActivity() {
                 .zoom(16.2)
                 .tilt(MapStyle.TILT_3D)
                 .build()
-            // 저작권 표시는 아래 카드에 모아 둔다.
+            // 나침반은 직접 그린 버튼을 쓰고, 저작권 표시는 아래 카드에 모아 둔다.
+            mapLibreMap.uiSettings.isCompassEnabled = false
             mapLibreMap.uiSettings.isLogoEnabled = false
             mapLibreMap.uiSettings.isAttributionEnabled = false
             mapLibreMap.addOnMapLongClickListener { point -> search.hideResults(); pickRoutePoint(point); true }
             mapLibreMap.addOnMapClickListener { point -> onMapTapped(point) }
+            mapLibreMap.addOnCameraMoveListener { updateCompass() }
+            mapLibreMap.addOnCameraIdleListener { updateCompass() }
             mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.BASE_STYLE_URL)) { style ->
                 mapStyle = style
                 installDataLayers(style)
                 requestBuildings()
                 requestSensors()
+                // 권한을 이미 받았다면 내 위치 점과 체감 효과를 바로 켠다 (카메라는 그대로).
+                activateLocation()
                 requestDataDateThenRefresh()
             }
         }
@@ -138,6 +186,7 @@ class MainActivity : AppCompatActivity() {
             dataDate = defaultDate
             setToCurrentTime(requestImmediately = true)
             updateDataDateLabel()
+            requestWeather()
         }
         timeSheet.onPickDate = { pickDate() }
 
@@ -145,6 +194,11 @@ class MainActivity : AppCompatActivity() {
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
         mapSettings.onSatellitePicked = { if (it != showSatellite) toggleBaseMap() }
         mapSettings.onHeatmapPicked = { if (it != showHeatmap) toggleLayerMode() }
+
+        binding.compassButton.setOnClickListener {
+            map?.animateCamera(CameraUpdateFactory.bearingTo(0.0), 400)
+        }
+        binding.myLocationButton.setOnClickListener { onMyLocationClicked() }
         routeCard.onClear = { clearRoute() }
         updateViewModeButton()
         updateLayerMode()
@@ -191,6 +245,12 @@ class MainActivity : AppCompatActivity() {
         layers?.heatmap?.setOverSatellite(showSatellite)
     }
 
+    // 지도가 돌아간 만큼 바늘을 반대로 돌려 늘 북쪽을 가리키게 한다.
+    private fun updateCompass() {
+        val bearing = map?.cameraPosition?.bearing ?: 0.0
+        binding.compassNeedle.rotation = -bearing.toFloat()
+    }
+
     private fun pickDate() {
         DatePickerDialog(
             this,
@@ -227,6 +287,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTimeCard() {
         timeSheet.showCard(followingNow, selectedMinutes, dataDate, LocalDate.now(SEOUL_ZONE))
+        // 과거나 다른 시각을 보면 내 위치 체감 효과는 끈다.
+        updateFeltHere()
     }
 
     private fun updateDataDateLabel(observedAt: LocalDateTime? = null) {
@@ -296,6 +358,136 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    // ---- 내 위치 ----
+
+    private fun onMyLocationClicked() {
+        if (hasLocationPermission()) {
+            showMyLocation()
+        } else {
+            locationPermissionRequest.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            .any { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }
+
+    /** Shows the location puck and starts location updates; false without a map or permission. */
+    @SuppressLint("MissingPermission")
+    private fun activateLocation(): Boolean {
+        val map = map ?: return false
+        val style = mapStyle ?: return false
+        if (!hasLocationPermission()) return false
+        val component = map.locationComponent
+        if (!component.isLocationComponentActivated) {
+            component.activateLocationComponent(
+                LocationComponentActivationOptions.builder(this, style)
+                    .useDefaultLocationEngine(true)
+                    .build()
+            )
+        }
+        component.isLocationComponentEnabled = true
+        component.renderMode = RenderMode.COMPASS
+        startLocationUpdates()
+        component.lastKnownLocation?.let { myLocation = it }
+        if (!showHeatmap && feltGrid == null) requestFeltGrid()
+        updateFeltHere()
+        return true
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startLocationUpdates() {
+        if (locationUpdatesOn || !hasLocationPermission()) return
+        val engine = map?.locationComponent?.takeIf { it.isLocationComponentActivated }?.locationEngine ?: return
+        engine.requestLocationUpdates(
+            LocationEngineRequest.Builder(LOCATION_INTERVAL_MS)
+                .setPriority(LocationEngineRequest.PRIORITY_HIGH_ACCURACY)
+                .setFastestInterval(LOCATION_INTERVAL_MS / 2)
+                .build(),
+            locationCallback,
+            Looper.getMainLooper(),
+        )
+        locationUpdatesOn = true
+    }
+
+    private fun stopLocationUpdates() {
+        if (!locationUpdatesOn) return
+        map?.locationComponent?.locationEngine?.removeLocationUpdates(locationCallback)
+        locationUpdatesOn = false
+    }
+
+    // Called only once a location permission is granted.
+    private fun showMyLocation() {
+        val map = map
+        if (map == null || !activateLocation()) {
+            Toast.makeText(this, R.string.location_searching, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val component = map.locationComponent
+        val last = component.lastKnownLocation
+        if (last == null) {
+            // 위치가 잡히면 카메라가 따라가게 하고, 사용자가 지도를 움직이면 풀린다.
+            component.cameraMode = CameraMode.TRACKING
+            Toast.makeText(this, R.string.location_searching, Toast.LENGTH_SHORT).show()
+        } else {
+            map.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(last.latitude, last.longitude), SELECTED_ZOOM), 700)
+        }
+    }
+
+    // ---- 내 위치 체감온도 ----
+
+    /** True when the selected date and time are now (the slider stops at 06:00–20:00). */
+    private fun isNow(): Boolean {
+        val now = LocalDateTime.now(SEOUL_ZONE)
+        return followingNow && dataDate == now.toLocalDate() &&
+            abs(selectedMinutes - (now.hour * 60 + now.minute)) <= NOW_TOLERANCE_MINUTES
+    }
+
+    /**
+     * Edge effect and "내 위치 체감" line from the UTCI cells within about 10 m of
+     * where you are, only while looking at now and standing on the campus grid.
+     */
+    private fun updateFeltHere() {
+        if (!::feltHere.isInitialized) return
+        val grid = feltGrid
+        val location = myLocation
+        val utci = if (grid != null && location != null && isNow() && hasLocationPermission()) {
+            grid.medianAround(location.latitude, location.longitude, FELT_RADIUS_M)
+        } else {
+            null
+        }
+        feltHere.show(utci)
+    }
+
+    // In shadow mode the heatmap is not fetched, so get the grid alone for the effect.
+    private fun requestFeltGrid() {
+        if (mapStyle == null || !isNow() || !hasLocationPermission()) return
+        val url = api.url("api/microclimate").addQueryParameter("datetime", selectedDateTime()).build()
+        feltCall = api.fetchJson(
+            url,
+            feltCall,
+            onError = { feltGrid = null; updateFeltHere() },
+            reportErrors = false,
+            parse = UtciHeatmap::fromResponse,
+        ) { _, heatmap ->
+            feltGrid = heatmap.grid
+            updateFeltHere()
+        }
+    }
+
+    // ---- 현재 날씨 ----
+
+    private fun requestWeather() {
+        weatherCall = api.fetchJson(
+            api.url("api/weather").build(),
+            weatherCall,
+            onError = { weatherCard.onError() },
+            reportErrors = false,
+        ) { root -> weatherCard.show(root) }
+    }
+
     // ---- 지도 데이터 ----
 
     private fun installDataLayers(style: Style) {
@@ -353,7 +545,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestForSelectedTime() {
         if (mapStyle == null) return
-        if (showHeatmap) requestMicroclimate() else requestShadows()
+        if (showHeatmap) requestMicroclimate() else { requestShadows(); requestFeltGrid() }
         // 그늘은 시각마다 달라지므로 경로도 같은 시각으로 다시 구한다.
         requestRoute()
     }
@@ -420,6 +612,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestMicroclimate() {
         microclimateCall?.cancel()
         binding.statusText.text = getString(R.string.loading_microclimate)
+        val forNow = isNow()
         val url = api.url("api/microclimate")
             .addQueryParameter("datetime", selectedDateTime())
             .build()
@@ -428,10 +621,14 @@ class MainActivity : AppCompatActivity() {
             microclimateCall,
             onError = { code ->
                 if (code == 404) showNotObservedYet()
+                feltGrid = null
+                updateFeltHere()
             },
             parse = UtciHeatmap::fromResponse,
         ) { root, heatmap ->
             showHeatmap(heatmap)
+            feltGrid = if (forNow) heatmap.grid else null
+            updateFeltHere()
             val observedAt = OffsetDateTime.parse(root.getJSONObject("weather").getString("observed_at"))
                 .atZoneSameInstant(SEOUL_ZONE).toLocalDateTime()
             updateDataDateLabel(observedAt)
@@ -464,15 +661,18 @@ class MainActivity : AppCompatActivity() {
     override fun onStart() {
         super.onStart()
         binding.mapView.onStart()
+        if (map?.locationComponent?.isLocationComponentActivated == true) startLocationUpdates()
     }
     override fun onResume() { super.onResume(); binding.mapView.onResume() }
     override fun onPause() { binding.mapView.onPause(); super.onPause() }
-    override fun onStop() { binding.mapView.onStop(); super.onStop() }
+    override fun onStop() { stopLocationUpdates(); binding.mapView.onStop(); super.onStop() }
     override fun onLowMemory() { super.onLowMemory(); binding.mapView.onLowMemory() }
     override fun onDestroy() {
         shadowCall?.cancel()
         microclimateCall?.cancel()
         routeCall?.cancel()
+        weatherCall?.cancel()
+        feltCall?.cancel()
         timeSheet.dismiss()
         mapSettings.dismiss()
         handler.removeCallbacksAndMessages(null)
@@ -489,6 +689,9 @@ class MainActivity : AppCompatActivity() {
         private val SEOUL_ZONE = ZoneId.of("Asia/Seoul")
         private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm")
         private const val SELECTED_ZOOM = 17.5
+        private const val LOCATION_INTERVAL_MS = 5_000L
+        private const val FELT_RADIUS_M = 10.0
+        private const val NOW_TOLERANCE_MINUTES = 30
         private const val START_MINUTES = 6 * 60
         private const val END_MINUTES = 20 * 60
     }

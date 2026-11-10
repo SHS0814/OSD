@@ -73,3 +73,46 @@ class UtciGrid(
         private const val METRES_PER_DEG_LAT = 111_320.0
     }
 }
+
+/**
+ * How the screen edge reacts to the felt temperature where you stand. 9 and 26 °C
+ * bound UTCI "no thermal stress"; below it frost, above it a warm glow, each in
+ * three strengths ([level] 1–3).
+ */
+enum class FeltStage(val level: Int, val cold: Boolean) {
+    STRONG_COLD(3, true),
+    MODERATE_COLD(2, true),
+    SLIGHT_COLD(1, true),
+    COMFORT(0, false),
+    MODERATE_HEAT(1, false),
+    STRONG_HEAT(2, false),
+    VERY_STRONG_HEAT(3, false);
+
+    val hasEffect: Boolean get() = level > 0
+
+    companion object {
+        fun of(utci: Double): FeltStage = when {
+            utci < -13 -> STRONG_COLD
+            utci < 0 -> MODERATE_COLD
+            utci < 9 -> SLIGHT_COLD
+            utci < 26 -> COMFORT
+            utci < 32 -> MODERATE_HEAT
+            utci < 38 -> STRONG_HEAT
+            else -> VERY_STRONG_HEAT
+        }
+
+        /** UTCI stress band name, matching the heatmap legend. */
+        fun label(utci: Double): String = when {
+            utci >= 46 -> "극심한 더위"
+            else -> when (of(utci)) {
+                STRONG_COLD -> "강한 추위"
+                MODERATE_COLD -> "보통 추위"
+                SLIGHT_COLD -> "약한 추위"
+                COMFORT -> "쾌적"
+                MODERATE_HEAT -> "보통 더위"
+                STRONG_HEAT -> "강한 더위"
+                VERY_STRONG_HEAT -> "매우 강한 더위"
+            }
+        }
+    }
+}
