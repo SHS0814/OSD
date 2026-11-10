@@ -24,7 +24,8 @@ Run from the repository root:
 
     PYTHONPATH=backend .venv/bin/python scripts/analyze_wind_effect.py [--workers 8] [--limit N]
 
-Writes docs/wind/results.json and figures to docs/wind/.
+Writes docs/wind/results.json and figures to docs/wind/ (docs/ is a local,
+gitignored folder).
 """
 
 from __future__ import annotations

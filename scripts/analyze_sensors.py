@@ -2,7 +2,7 @@
 
 Reads every CSV/JSON in data/raw/sensors/ (services/sensors.py), flags bad
 readings, and for each sensor answers the questions that decide whether v2
-should correct air temperature from sensors (docs/04-data-usage-plan.md §5):
+should correct air temperature from sensors (Ta_cell = Ta_ASOS + a learned ΔT):
 
 1. How far is the sensor from ASOS, by day and by night? The night offset
    has no sun in it, so it is the sensor's own bias (enclosure, the Pi's heat,
@@ -13,7 +13,8 @@ should correct air temperature from sensors (docs/04-data-usage-plan.md §5):
    better than ASOS alone? Held out by sensor when there are at least
    MIN_SENSORS_FOR_LOSO sensors, otherwise by day.
 
-Writes docs/sensor-test/results.md plus figures; nothing in data/ changes.
+Writes docs/sensor-test/results.md plus figures (docs/ is a local, gitignored
+folder); nothing in data/ changes.
 
     PYTHONPATH=backend python scripts/analyze_sensors.py [data/raw/sensors]
 """
