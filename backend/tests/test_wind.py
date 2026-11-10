@@ -12,6 +12,7 @@ from app.services.wind import (
     STATION_Z0_M,
     MassConsistentSolver,
     WindField,
+    arrow_features,
     background_factor,
     from_direction,
     macdonald,
@@ -130,6 +131,15 @@ def test_field_combines_flow_and_shelter_without_counting_the_lee_twice() -> Non
     front = cell_of(raster, -14, 0)
     assert shelter[front] == pytest.approx(K_BG)
     assert k[front] < 0.8 * K_BG
+
+
+def test_arrows_skip_buildings() -> None:
+    raster = square_obstacles(buildings=[(0, 0, 20, 10.0)])
+    field = WindField(raster)
+    points = arrow_features(field, 3.0, 270.0, SUMMER, step_cells=1)
+    assert len(points) == int(raster.valid.sum()) < int(raster.inside.sum())
+    assert all(0 < p["properties"]["direction_deg"] <= 360 for p in points)
+    assert arrow_features(field, 0.2, 270.0, SUMMER, step_cells=1) == []  # calm
 
 
 # -- the 2D mass-consistent flow -------------------------------------------------
