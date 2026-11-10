@@ -9,7 +9,7 @@ from app.config import settings
 from app.services import routing, vworld_tiles
 from app.services.geometry import to_wgs84
 from app.services.shadow import building_shadows
-from app.services.solar import calculate_solar_position, parse_requested_datetime
+from app.services.solar import SEOUL_TZ, calculate_solar_position, localize_datetime, parse_requested_datetime
 from app.services.weather import WeatherUnavailable
 
 
@@ -179,6 +179,35 @@ def weather_period(request: Request) -> dict:
         "latest_full_date": latest.isoformat(),
         "realtime": settings.kma_apihub_key is not None,
         "station": "청주 ASOS (131)",
+    }
+
+
+@router.get("/api/weather")
+def weather_now(
+    request: Request,
+    datetime_value: Annotated[datetime | None, Query(alias="datetime")] = None,
+) -> dict:
+    """ASOS weather for one instant (default: now), for the app's weather card.
+
+    When "now" is past what has been observed (no API허브 key, or the hour is
+    not reported yet), the latest observation is returned and ``latest`` says so.
+    """
+    store = request.app.state.weather
+    when = localize_datetime(datetime_value) if datetime_value is not None else datetime.now(SEOUL_TZ)
+    latest = False
+    try:
+        weather = store.at(when)
+    except WeatherUnavailable:
+        if datetime_value is not None:
+            raise HTTPException(status_code=404, detail=f"no observation around {when.isoformat()}")
+        when, latest = store.latest, True
+        weather = store.at(when)
+    solar = calculate_solar_position(when, settings.campus_latitude, settings.campus_longitude)
+    return {
+        "datetime": when.isoformat(),
+        "latest": latest,
+        "solar": _solar_payload(solar),
+        "weather": weather.as_dict(),
     }
 
 
