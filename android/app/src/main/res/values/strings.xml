@@ -2,5 +2,21 @@
 <resources>
     <string name="app_name">Campus Shade Map</string>
 
+    <!-- 시각 선택 -->
+    <string name="selected_time">선택 시간: %1$02d:%2$02d</string>
+    <string name="clock_time">%1$02d:%2$02d</string>
+    <string name="time_now">현재 시각</string>
+    <string name="time_selected">선택 시각</string>
+    <string name="time_sheet_title">날짜와 시각</string>
+    <string name="now">현재 시각</string>
+    <string name="time_range_start">06:00</string>
+    <string name="time_range_end">20:00</string>
+
+    <!-- 상태 표시 -->
+    <string name="loading_shadows">그림자 계산 중…</string>
+    <string name="solar_altitude">태양 고도: %1$.1f°</string>
+    <string name="network_error">서버 연결 실패: %1$s</string>
+    <string name="http_error">서버 오류: HTTP %1$d</string>
+
     <string name="attribution">© OpenStreetMap contributors · OpenFreeMap · OpenMapTiles</string>
 </resources>
