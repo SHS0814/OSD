@@ -1,6 +1,8 @@
 """Hourly 청주 ASOS observations, looked up at an arbitrary instant.
 
-The store holds the committed snapshot (scripts/fetch_kma_asos.py).
+The store starts from the committed snapshot (scripts/fetch_kma_asos.py) and,
+when an API허브 key is configured, is extended with newer hours as they are
+observed (services/kma_hub.py), so "now" can be answered.
 
 State variables (air temperature, humidity, wind, cloud) are observed on the
 hour and interpolated linearly in between. Solar radiation is different:
@@ -8,6 +10,10 @@ hour and interpolated linearly in between. Solar radiation is different:
 it is turned into a clearness index for that hour and then scaled by where the
 sun is at the requested instant. That keeps the sky as cloudy as observed
 while letting irradiance follow the sun within the hour.
+
+For an instant after the latest observation - the current hour is only
+reported once it ends - the latest observation is carried forward for up to
+PERSISTENCE_LIMIT, and the sample says so.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ from .solar import SEOUL_TZ, calculate_solar_position, localize_datetime
 from .thermal import extraterrestrial_horizontal
 
 HOUR = timedelta(hours=1)
+PERSISTENCE_LIMIT = timedelta(hours=3)
 
 # Below this much sun above the atmosphere the hour's clearness index is mostly
 # noise (the hour straddles sunrise), so it is estimated from cloud cover.
@@ -55,12 +62,28 @@ class WeatherStore:
             for record in csv.DictReader(handle):
                 stamp = datetime.strptime(record["tm"], "%Y-%m-%d %H:%M").replace(tzinfo=SEOUL_TZ)
                 rows.append((stamp, {key: _number(value) for key, value in record.items() if key != "tm"}))
+        # (times, rows) is replaced as a whole by extend(), so a request reading
+        # it from another thread always sees a consistent pair.
         self._series: tuple[list[datetime], list[Row]] = ([t for t, _ in rows], [r for _, r in rows])
 
     @property
     def period(self) -> tuple[datetime, datetime]:
         times = self._series[0]
         return times[0], times[-1]
+
+    @property
+    def latest(self) -> datetime:
+        return self._series[0][-1]
+
+    def extend(self, rows: list[tuple[datetime, Row]]) -> int:
+        """Add or replace hours; returns how many hours are new."""
+        times, current = self._series
+        merged = dict(zip(times, current))
+        added = sum(1 for stamp, _ in rows if stamp not in merged)
+        merged.update(rows)
+        ordered = sorted(merged)
+        self._series = (ordered, [merged[stamp] for stamp in ordered])
+        return added
 
     def _row(self, stamp: datetime) -> Row | None:
         times, rows = self._series
@@ -103,17 +126,22 @@ class WeatherStore:
     def at(self, when: datetime) -> WeatherSample:
         when = localize_datetime(when)
         start, latest = self.period
-        if when < start or when > latest:
+        if when < start or when > latest + PERSISTENCE_LIMIT:
             raise WeatherUnavailable(
-                f"weather is available from {start:%Y-%m-%d %H:%M} to {latest:%Y-%m-%d %H:%M} (Asia/Seoul)"
+                f"weather is available from {start:%Y-%m-%d %H:%M} to "
+                f"{latest + PERSISTENCE_LIMIT:%Y-%m-%d %H:%M} (Asia/Seoul)"
             )
 
-        persisted = False
-        state_at = when
-        hour_end = when.replace(minute=0, second=0, microsecond=0)
-        if hour_end < when:
-            hour_end += HOUR
-        observed_at = hour_end
+        persisted = when > latest
+        if persisted:
+            # Carry the latest hour forward, both its state and its cloudiness.
+            state_at, hour_end, observed_at = latest, latest, latest
+        else:
+            state_at = when
+            hour_end = when.replace(minute=0, second=0, microsecond=0)
+            if hour_end < when:
+                hour_end += HOUR
+            observed_at = hour_end
         clearness, hour_mean = self._clearness(hour_end)
 
         altitude = calculate_solar_position(when, self.latitude, self.longitude).altitude
