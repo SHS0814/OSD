@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 지도가 화면 전체(상태바·내비게이션바 아래까지)를 채우고, 컨트롤은 그 위에 떠 있다.
+     overlay에만 시스템 바 인셋만큼 안쪽 여백을 준다 (MainActivity). -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <org.maplibre.android.maps.MapView
+        android:id="@+id/mapView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <FrameLayout
+        android:id="@+id/overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 아래쪽: 날씨·나침반·내 위치·시각, 선택한 건물, 범례와 상태 -->
+        <LinearLayout
+            android:id="@+id/bottomContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="vertical">
+
+            <!-- 맨 아래: 경로, 범례, 상태, 저작권 표시 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/infoCard"
+                style="@style/CampusShade.Card"
+                android:layout_width="match_parent"
+                android:layout_marginHorizontal="8dp"
+                android:layout_marginBottom="8dp"
+                android:clickable="true"
+                app:cardBackgroundColor="@color/card_translucent"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="0dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="10dp"
+                    android:paddingVertical="6dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="@string/attribution"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="9sp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>
