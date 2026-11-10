@@ -122,3 +122,49 @@ def mean_radiant_temperature(
 
     absorbed = shortwave + longwave
     return (absorbed / (PERSON_EMISSIVITY * STEFAN_BOLTZMANN)) ** 0.25 - KELVIN
+
+
+def relative_humidity(air_temp_c: np.ndarray, dew_point_c: float) -> np.ndarray:
+    """Relative humidity in % from the dew point (Magnus formula)."""
+
+    def saturation(temp_c):
+        return 6.112 * np.exp(17.62 * temp_c / (243.12 + temp_c))
+
+    return np.clip(100.0 * saturation(dew_point_c) / saturation(np.asarray(air_temp_c)), 0, 100)
+
+
+def utci(
+    air_temp_c: np.ndarray, mrt_c: np.ndarray, wind_ms: np.ndarray | float, rh_percent: np.ndarray
+) -> np.ndarray:
+    """Universal Thermal Climate Index in °C; NaN where inputs leave its valid range."""
+    from pythermalcomfort.models import utci as utci_model
+
+    wind = np.clip(np.broadcast_to(wind_ms, np.shape(air_temp_c)), UTCI_MIN_WIND, UTCI_MAX_WIND)
+    result = utci_model(
+        tdb=np.asarray(air_temp_c, dtype=float),
+        tr=np.asarray(mrt_c, dtype=float),
+        v=np.asarray(wind, dtype=float),
+        rh=np.asarray(rh_percent, dtype=float),
+        limit_inputs=True,
+    )
+    return np.asarray(result.utci, dtype=float)
+
+
+UTCI_CATEGORIES = (
+    (46.0, "extreme_heat", "극심한 더위"),
+    (38.0, "very_strong_heat", "매우 강한 더위"),
+    (32.0, "strong_heat", "강한 더위"),
+    (26.0, "moderate_heat", "보통 더위"),
+    (9.0, "no_stress", "열 스트레스 없음"),
+    (0.0, "slight_cold", "약한 추위"),
+    (-13.0, "moderate_cold", "보통 추위"),
+    (-27.0, "strong_cold", "강한 추위"),
+    (-40.0, "very_strong_cold", "매우 강한 추위"),
+)
+
+
+def utci_category(value: float) -> tuple[str, str]:
+    for lower, code, label in UTCI_CATEGORIES:
+        if value >= lower:
+            return code, label
+    return "extreme_cold", "극심한 추위"

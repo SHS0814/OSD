@@ -5,7 +5,10 @@ from app.services.thermal import (
     erbs_diffuse_fraction,
     mean_radiant_temperature,
     projected_area_factor,
+    relative_humidity,
     split_irradiance,
+    utci,
+    utci_category,
 )
 
 # A clear August noon in 청주 as ASOS reported it (2025-08-05 12:00).
@@ -58,3 +61,24 @@ def test_shade_lowers_mean_radiant_temperature_by_tens_of_degrees() -> None:
     # Published street measurements put sun-shade Tmrt gaps at roughly 10-30 °C.
     assert 50 < sun < 70
     assert 10 < sun - shade < 35
+
+
+def test_relative_humidity_from_dew_point() -> None:
+    assert relative_humidity(np.array([20.0]), 20.0)[0] == pytest.approx(100.0)
+    # ASOS 2025-08-05 12:00 reported 31.8 °C, dew point 22.2 °C and 57 %.
+    assert relative_humidity(np.array([31.8]), 22.2)[0] == pytest.approx(57, abs=1.5)
+
+
+def test_utci_rises_with_radiant_load() -> None:
+    values = utci(
+        np.array([31.8, 31.8]), np.array([35.0, 60.0]), 1.5, np.array([57.0, 57.0])
+    )
+    assert values[1] > values[0]
+    assert utci_category(values[1])[0] in {"strong_heat", "very_strong_heat"}
+
+
+def test_utci_categories_follow_published_bands() -> None:
+    assert utci_category(20.0)[0] == "no_stress"
+    assert utci_category(30.0)[0] == "moderate_heat"
+    assert utci_category(40.0)[0] == "very_strong_heat"
+    assert utci_category(-50.0)[0] == "extreme_cold"
