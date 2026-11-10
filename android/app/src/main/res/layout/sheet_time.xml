@@ -18,6 +18,14 @@
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
+        <Button
+            android:id="@+id/dateButton"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:contentDescription="@string/pick_date"
+            android:textSize="15sp" />
+
         <TextView
             android:id="@+id/selectedTime"
             android:layout_width="0dp"
@@ -28,6 +36,15 @@
             android:textSize="17sp"
             android:textStyle="bold" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/dataDateText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp" />
 
     <SeekBar
         android:id="@+id/timeSlider"

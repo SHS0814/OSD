@@ -8,6 +8,7 @@ import kr.ac.cbnu.campusshade.R
 import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.databinding.SheetTimeBinding
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -22,6 +23,7 @@ class TimeSheet(private val activity: AppCompatActivity, private val binding: Ac
     /** Slider moved to [progress] (minutes after its start); [fromUser] false when set in code. */
     var onSlide: (progress: Int, fromUser: Boolean) -> Unit = { _, _ -> }
     var onNow: () -> Unit = {}
+    var onPickDate: () -> Unit = {}
 
     init {
         sheet.timeSlider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -30,6 +32,7 @@ class TimeSheet(private val activity: AppCompatActivity, private val binding: Ac
             override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
         })
         sheet.nowButton.setOnClickListener { onNow() }
+        sheet.dateButton.setOnClickListener { onPickDate() }
         binding.timeCard.setOnClickListener { dialog.show() }
     }
 
@@ -49,9 +52,20 @@ class TimeSheet(private val activity: AppCompatActivity, private val binding: Ac
         binding.timeCardDate.text = date.format(MONTH_DAY)
     }
 
+    fun showDataDate(date: LocalDate, today: LocalDate, observedAt: LocalDateTime?) {
+        val text = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+        sheet.dateButton.text = if (date == today) activity.getString(R.string.date_today, text) else text
+        sheet.dataDateText.text = if (observedAt == null) {
+            activity.getString(R.string.data_date, text)
+        } else {
+            activity.getString(R.string.data_date_observed, text, observedAt.format(HOUR_MINUTE))
+        }
+    }
+
     fun dismiss() = dialog.dismiss()
 
     private companion object {
+        val HOUR_MINUTE: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
         val MONTH_DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/dd")
     }
 }
