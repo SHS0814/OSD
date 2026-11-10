@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.app.DatePickerDialog
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.PointF
 import android.location.Location
 import android.os.Bundle
 import android.os.Handler
@@ -19,11 +20,13 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.map.MapLayers
+import kr.ac.cbnu.campusshade.map.PinDragger
 import kr.ac.cbnu.campusshade.ui.FeltHere
 import kr.ac.cbnu.campusshade.ui.Legend
 import kr.ac.cbnu.campusshade.ui.MapSettingsSheet
 import kr.ac.cbnu.campusshade.ui.RouteCard
 import kr.ac.cbnu.campusshade.ui.SearchPanel
+import kr.ac.cbnu.campusshade.ui.SensorSheet
 import kr.ac.cbnu.campusshade.ui.TimeSheet
 import kr.ac.cbnu.campusshade.ui.WeatherCard
 import okhttp3.Call
@@ -75,7 +78,10 @@ class MainActivity : AppCompatActivity() {
     private var is3d = true
     private var showHeatmap = true
     private var showSatellite = true
+    // 센서 위치: 기본으로 보이고, 누르면 정보 시트를 연다.
+    private var showSensors = true
     private var sensors: List<SensorSite> = emptyList()
+    private lateinit var sensorSheet: SensorSheet
 
     // 내 위치 체감온도: '지금'의 UTCI 격자와 최근 위치
     private var feltGrid: UtciGrid? = null
@@ -134,6 +140,7 @@ class MainActivity : AppCompatActivity() {
         api = ApiClient(this) { binding.statusText.text = it }
         timeSheet = TimeSheet(this, binding)
         mapSettings = MapSettingsSheet(this)
+        sensorSheet = SensorSheet(this)
         search = SearchPanel(this, binding)
         routeCard = RouteCard(binding)
         weatherCard = WeatherCard(this, binding)
@@ -158,6 +165,7 @@ class MainActivity : AppCompatActivity() {
             mapLibreMap.uiSettings.isAttributionEnabled = false
             mapLibreMap.addOnMapLongClickListener { point -> search.hideResults(); pickRoutePoint(point); true }
             mapLibreMap.addOnMapClickListener { point -> onMapTapped(point) }
+            configurePinDragging(mapLibreMap)
             mapLibreMap.addOnCameraMoveListener { updateCompass() }
             mapLibreMap.addOnCameraIdleListener { updateCompass() }
             mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.BASE_STYLE_URL)) { style ->
@@ -194,6 +202,7 @@ class MainActivity : AppCompatActivity() {
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
         mapSettings.onSatellitePicked = { if (it != showSatellite) toggleBaseMap() }
         mapSettings.onHeatmapPicked = { if (it != showHeatmap) toggleLayerMode() }
+        mapSettings.onSensorsPicked = { if (it != showSensors) { showSensors = !showSensors; updateSensors() } }
 
         binding.compassButton.setOnClickListener {
             map?.animateCamera(CameraUpdateFactory.bearingTo(0.0), 400)
@@ -203,6 +212,7 @@ class MainActivity : AppCompatActivity() {
         updateViewModeButton()
         updateLayerMode()
         updateBaseMapButton()
+        updateSensors()
     }
 
     private fun toggleViewMode() {
@@ -243,6 +253,12 @@ class MainActivity : AppCompatActivity() {
         updateBaseMapButton()
         layers?.satellite?.setVisible(showSatellite)
         layers?.heatmap?.setOverSatellite(showSatellite)
+    }
+
+    private fun updateSensors() {
+        mapSettings.showSensors(showSensors)
+        layers?.sensors?.setVisible(showSensors)
+        if (!showSensors) sensorSheet.dismiss()
     }
 
     // 지도가 돌아간 만큼 바늘을 반대로 돌려 늘 북쪽을 가리키게 한다.
@@ -307,7 +323,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun Building.latLng() = LatLng(latitude, longitude)
 
-    // ---- 지도 누르기 ----
+    // ---- 지도 누르기: 센서 → 건물 ----
 
     private fun onMapTapped(point: LatLng): Boolean {
         // 검색 결과가 열려 있으면 첫 탭은 닫기만 한다.
@@ -315,7 +331,50 @@ class MainActivity : AppCompatActivity() {
             search.hideResults()
             return true
         }
+        val map = map ?: return false
+        val screen = map.projection.toScreenLocation(point)
+        sensorAt(screen)?.let { sensorSheet.show(it); return true }
+        buildingAt(screen)?.let { search.select(it, moveCamera = false); return true }
         return false
+    }
+
+    // 센서 점은 작아서 손가락 크기만큼 넓게 찾는다.
+    private fun sensorAt(screen: PointF): SensorSite? {
+        if (!showSensors) return null
+        val map = map ?: return null
+        val slop = SENSOR_TAP_DP * resources.displayMetrics.density
+        return layers?.sensors?.sensorAt(map, screen, slop, sensors)
+    }
+
+    private fun buildingAt(screen: PointF): Building? {
+        val map = map ?: return null
+        return layers?.buildings?.buildingAt(map, screen, search.buildings)
+    }
+
+    // ---- 출발·도착 핀 끌기 ----
+
+    private fun configurePinDragging(mapLibreMap: MapLibreMap) {
+        PinDragger(binding.mapView, mapLibreMap, object : PinDragger.Pins {
+            override fun place(role: String): Place? = if (role == "start") routeStart else routeEnd
+
+            override fun move(role: String, place: Place?) {
+                if (role == "start") routeStart = place else routeEnd = place
+                showRouteEnds()
+            }
+
+            override fun drop(role: String, screen: PointF) = finishPinDrag(role, screen)
+        }).attach()
+    }
+
+    // 놓은 자리가 건물이면 그 이름을, 아니면 "지도에서 고른 곳"으로 부르고 경로를 다시 구한다.
+    private fun finishPinDrag(role: String, screen: PointF) {
+        val map = map ?: return
+        val point = map.projection.fromScreenLocation(screen)
+        val name = buildingAt(screen)?.label ?: getString(R.string.route_map_point)
+        val place = Place(name, point)
+        if (role == "start") routeStart = place else routeEnd = place
+        search.hideResults()
+        onRouteEndsChanged()
     }
 
     // ---- 길찾기 ----
@@ -494,6 +553,7 @@ class MainActivity : AppCompatActivity() {
         layers = MapLayers(style, this)
         updateLayerMode()
         updateBaseMap()
+        updateSensors()
     }
 
     private fun showHeatmap(heatmap: UtciHeatmap) {
@@ -675,6 +735,7 @@ class MainActivity : AppCompatActivity() {
         feltCall?.cancel()
         timeSheet.dismiss()
         mapSettings.dismiss()
+        sensorSheet.dismiss()
         handler.removeCallbacksAndMessages(null)
         binding.mapView.onDestroy()
         super.onDestroy()
@@ -689,6 +750,7 @@ class MainActivity : AppCompatActivity() {
         private val SEOUL_ZONE = ZoneId.of("Asia/Seoul")
         private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm")
         private const val SELECTED_ZOOM = 17.5
+        private const val SENSOR_TAP_DP = 14f
         private const val LOCATION_INTERVAL_MS = 5_000L
         private const val FELT_RADIUS_M = 10.0
         private const val NOW_TOLERANCE_MINUTES = 30

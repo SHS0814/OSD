@@ -1,6 +1,10 @@
 package kr.ac.cbnu.campusshade.map
 
+import android.graphics.PointF
+import kr.ac.cbnu.campusshade.Building
+import kr.ac.cbnu.campusshade.BuildingSearch
 import kr.ac.cbnu.campusshade.MapStyle
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression.coalesce
 import org.maplibre.android.style.expressions.Expression.color
@@ -40,4 +44,14 @@ class BuildingLayer(private val style: Style) {
         style.getSourceAs<GeoJsonSource>(MapStyle.BUILDING_SOURCE)?.setGeoJson(geoJson)
     }
 
+    /** The building drawn at [screen], matched to [buildings] by id or name. */
+    fun buildingAt(map: MapLibreMap, screen: PointF, buildings: List<Building>): Building? =
+        map.queryRenderedFeatures(screen, MapStyle.BUILDING_LAYER).asSequence()
+            .mapNotNull { feature ->
+                val id = (if (feature.hasProperty("id")) feature.getNumberProperty("id") else null)?.toLong()
+                    ?: feature.id()?.toDoubleOrNull()?.toLong()
+                val name = if (feature.hasProperty("name")) feature.getStringProperty("name") else null
+                BuildingSearch.findTapped(buildings, id, name)
+            }
+            .firstOrNull()
 }
