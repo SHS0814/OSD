@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from pyproj import Transformer
-from shapely.geometry import MultiPolygon, Polygon, mapping, shape
+from shapely.geometry import Polygon, mapping, shape
 from shapely.ops import transform as transform_geometry, unary_union
 
 from heights import HeightResolver
