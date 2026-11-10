@@ -89,3 +89,40 @@ def test_a_missing_value_in_the_latest_hour_falls_back_to_the_hour_before() -> N
     sample = store.at(latest + HOUR + timedelta(minutes=20))
     assert sample.persisted
     assert sample.cloud_fraction == pytest.approx(previous_cloud / 10)
+
+
+def _wind_store(tmp_path, rows: list[tuple[str, float, float]]) -> WeatherStore:
+    """A tiny snapshot with the given (time, ws, wd) hours; other columns fixed."""
+    lines = ["tm,ta,hm,td,pv,ws,wd,icsr,ss,cloud,ts"]
+    lines += [f"{tm},2.0,40,-10.0,2.8,{ws},{wd},1.5,1.0,0,3.0" for tm, ws, wd in rows]
+    path = tmp_path / "asos.csv"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return WeatherStore(path, settings.campus_latitude, settings.campus_longitude)
+
+
+def test_wind_direction_is_interpolated_round_the_compass(tmp_path) -> None:
+    store = _wind_store(tmp_path, [("2026-01-13 11:00", 3.0, 350), ("2026-01-13 12:00", 3.0, 10),
+                                   ("2026-01-13 13:00", 3.0, 270)])
+    assert at(store, "2026-01-13T11:00").wind_direction_deg == pytest.approx(350)
+    # Halfway between 350° and 10° is north (written 360, since 0 means calm), not 180°.
+    assert at(store, "2026-01-13T11:30").wind_direction_deg == pytest.approx(360)
+    quarter = at(store, "2026-01-13T11:15").wind_direction_deg
+    assert quarter == pytest.approx(355, abs=0.1)
+    assert at(store, "2026-01-13T11:45").wind_direction_deg == pytest.approx(5, abs=0.1)
+    # 10° -> 270° goes the short way, through west-north-west, not through south.
+    assert at(store, "2026-01-13T12:30").wind_direction_deg == pytest.approx(320, abs=0.1)
+
+
+def test_calm_wind_has_no_direction(tmp_path) -> None:
+    store = _wind_store(tmp_path, [("2026-01-13 11:00", 0.3, 0), ("2026-01-13 12:00", 2.0, 90),
+                                   ("2026-01-13 13:00", 0.2, 0)])
+    assert at(store, "2026-01-13T11:00").wind_direction_deg is None
+    # One side calm: the direction is the observed one, not pulled towards "0".
+    assert at(store, "2026-01-13T11:40").wind_direction_deg == pytest.approx(90)
+    assert at(store, "2026-01-13T13:00").wind_direction_deg is None
+
+
+def test_sample_dict_carries_the_wind_direction(store: WeatherStore) -> None:
+    sample = at(store, "2026-01-13T13:00")  # ASOS: ws 3.1, wd 290
+    assert sample.wind_direction_deg == pytest.approx(290)
+    assert sample.as_dict()["wind_direction_deg"] == 290.0
