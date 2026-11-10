@@ -1,0 +1,13 @@
+<!-- 바람 화살표: 위(북)를 가리키고, 지도에서 불어가는 쪽으로 돌린다. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#374151"
+        android:pathData="M12,2L18.5,10.5L13.6,10.5L13.6,22L10.4,22L10.4,10.5L5.5,10.5Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineJoin="round"
+        android:strokeWidth="1.6" />
+</vector>

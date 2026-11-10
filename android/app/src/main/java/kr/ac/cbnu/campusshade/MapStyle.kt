@@ -50,5 +50,10 @@ object MapStyle {
     // 기본 지도(openfreemap bright)에 있는 글꼴이어야 라벨이 그려진다.
     val labelFont = arrayOf("Noto Sans Bold")
 
+    // 바람 화살표: 히트맵 색과 섞이지 않게 무채색(짙은 회색 + 흰 테두리)
+    const val WIND_SOURCE = "campus-wind"
+    const val WIND_LAYER = "campus-wind-arrows"
+    const val WIND_ARROW_IMAGE = "wind-arrow"
+
     const val TILT_3D = 55.0
 }

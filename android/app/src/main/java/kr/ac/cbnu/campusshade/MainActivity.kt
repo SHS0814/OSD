@@ -10,6 +10,7 @@ import android.location.Location
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import android.widget.Toast
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -78,6 +79,8 @@ class MainActivity : AppCompatActivity() {
     private var is3d = true
     private var showHeatmap = true
     private var showSatellite = true
+    private var showWind = false
+    private var windCall: Call? = null
     // 센서 위치: 기본으로 보이고, 누르면 정보 시트를 연다.
     private var showSensors = true
     private var sensors: List<SensorSite> = emptyList()
@@ -202,6 +205,7 @@ class MainActivity : AppCompatActivity() {
         mapSettings.on3dPicked = { if (it != is3d) toggleViewMode() }
         mapSettings.onSatellitePicked = { if (it != showSatellite) toggleBaseMap() }
         mapSettings.onHeatmapPicked = { if (it != showHeatmap) toggleLayerMode() }
+        mapSettings.onWindPicked = { if (it != showWind) toggleWind() }
         mapSettings.onSensorsPicked = { if (it != showSensors) { showSensors = !showSensors; updateSensors() } }
 
         binding.compassButton.setOnClickListener {
@@ -212,6 +216,7 @@ class MainActivity : AppCompatActivity() {
         updateViewModeButton()
         updateLayerMode()
         updateBaseMapButton()
+        updateWindButton()
         updateSensors()
     }
 
@@ -254,6 +259,20 @@ class MainActivity : AppCompatActivity() {
         layers?.satellite?.setVisible(showSatellite)
         layers?.heatmap?.setOverSatellite(showSatellite)
     }
+
+    private fun toggleWind() {
+        showWind = !showWind
+        updateWindButton()
+        if (showWind) {
+            requestWind()
+        } else {
+            windCall?.cancel()
+            layers?.wind?.clear()
+            binding.windText.visibility = View.GONE
+        }
+    }
+
+    private fun updateWindButton() = mapSettings.showWind(showWind)
 
     private fun updateSensors() {
         mapSettings.showSensors(showSensors)
@@ -536,6 +555,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ---- 바람 ----
+
+    private fun requestWind() {
+        if (mapStyle == null || !showWind) return
+        binding.windText.visibility = View.VISIBLE
+        binding.windText.text = getString(R.string.wind_loading)
+        val url = api.url("api/wind").addQueryParameter("datetime", selectedDateTime()).build()
+        windCall = api.fetchJson(
+            url,
+            windCall,
+            onError = { code ->
+                layers?.wind?.clear()
+                binding.windText.text = if (code == null) getString(R.string.network_error, "")
+                else if (code == 404) getString(R.string.wind_unavailable) else getString(R.string.http_error, code)
+            },
+            reportErrors = false,
+        ) { root ->
+            if (!showWind) return@fetchJson
+            layers?.wind?.show(root.toString())
+            val wind = root.getJSONObject("wind")
+            val speed = wind.optDouble("asos_speed_ms", 0.0)
+            val direction = wind.optDouble("direction_deg", Double.NaN)
+            binding.windText.text = when {
+                direction.isNaN() -> getString(R.string.wind_calm)
+                wind.optBoolean("wind_field") -> getString(R.string.wind_field, WindDirection.name(direction), speed)
+                else -> getString(R.string.wind_uniform, WindDirection.name(direction), speed)
+            }
+        }
+    }
+
     // ---- 현재 날씨 ----
 
     private fun requestWeather() {
@@ -606,6 +655,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestForSelectedTime() {
         if (mapStyle == null) return
         if (showHeatmap) requestMicroclimate() else { requestShadows(); requestFeltGrid() }
+        if (showWind) requestWind()
         // 그늘은 시각마다 달라지므로 경로도 같은 시각으로 다시 구한다.
         requestRoute()
     }
@@ -732,6 +782,7 @@ class MainActivity : AppCompatActivity() {
         microclimateCall?.cancel()
         routeCall?.cancel()
         weatherCall?.cancel()
+        windCall?.cancel()
         feltCall?.cancel()
         timeSheet.dismiss()
         mapSettings.dismiss()

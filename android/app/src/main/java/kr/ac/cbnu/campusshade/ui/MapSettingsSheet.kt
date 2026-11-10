@@ -17,6 +17,7 @@ class MapSettingsSheet(activity: AppCompatActivity) {
     var on3dPicked: (Boolean) -> Unit = {}
     var onSatellitePicked: (Boolean) -> Unit = {}
     var onHeatmapPicked: (Boolean) -> Unit = {}
+    var onWindPicked: (Boolean) -> Unit = {}
     var onSensorsPicked: (Boolean) -> Unit = {}
 
     init {
@@ -28,6 +29,9 @@ class MapSettingsSheet(activity: AppCompatActivity) {
         }
         sheet.layerModeGroup.addOnButtonCheckedListener { _, id, checked ->
             if (checked) onHeatmapPicked(id == R.id.layerHeatmap)
+        }
+        sheet.windGroup.addOnButtonCheckedListener { _, id, checked ->
+            if (checked) onWindPicked(id == R.id.windOn)
         }
         sheet.sensorGroup.addOnButtonCheckedListener { _, id, checked ->
             if (checked) onSensorsPicked(id == R.id.sensorsOn)
@@ -44,6 +48,8 @@ class MapSettingsSheet(activity: AppCompatActivity) {
         sheet.baseMapGroup.check(if (satellite) R.id.baseMapSatellite else R.id.baseMapNormal)
 
     fun showHeatmap(heatmap: Boolean) = sheet.layerModeGroup.check(if (heatmap) R.id.layerHeatmap else R.id.layerShadow)
+
+    fun showWind(wind: Boolean) = sheet.windGroup.check(if (wind) R.id.windOn else R.id.windOff)
 
     fun showSensors(sensors: Boolean) = sheet.sensorGroup.check(if (sensors) R.id.sensorsOn else R.id.sensorsOff)
 }

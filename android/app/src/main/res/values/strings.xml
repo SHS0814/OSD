@@ -38,6 +38,9 @@
     <string name="show_basemap">일반</string>
     <string name="show_heatmap">체감온도</string>
     <string name="show_shadows">그림자</string>
+    <string name="map_settings_wind">바람</string>
+    <string name="wind_off">끔</string>
+    <string name="wind_on">바람 화살표</string>
     <string name="map_settings_sensors">센서</string>
     <string name="sensors_off">숨김</string>
     <string name="sensors_on">센서 위치</string>
@@ -47,6 +50,13 @@
     <string name="sensor_readings">최근 측정값</string>
     <string name="sensor_readings_pending">측정값은 준비 중이에요. 지금은 위치만 공개돼요.</string>
     <string name="sensor_site">설치 정보</string>
+
+    <!-- 바람 화살표 -->
+    <string name="wind_loading">바람 계산 중…</string>
+    <string name="wind_field">청주 ASOS %1$s풍 %2$.1f m/s · 칸별 차폐 추정</string>
+    <string name="wind_uniform">청주 ASOS %1$s풍 %2$.1f m/s · 캠퍼스 전체 같은 바람</string>
+    <string name="wind_calm">청주 ASOS 무풍</string>
+    <string name="wind_unavailable">이 시각에는 바람 관측이 없어요</string>
 
     <!-- 내 위치 체감온도 -->
     <string name="felt_here">내 위치 체감 %1$d° · %2$s (추정)</string>
