@@ -161,6 +161,24 @@ cd android
 
 timezone 없는 값은 `Asia/Seoul`로 해석합니다. offset이 있는 값은 같은 순간의 서울 시각으로 변환합니다. 결과는 현지 ISO datetime, 태양 고도·방위각, 그림자 GeoJSON과 전체/높이 보유/누락 건물 수를 포함합니다. 태양 고도가 0° 이하면 `features`가 빈 컬렉션이며, 직접 meter 높이가 없는 건물은 그림자 계산에서 제외됩니다.
 
+### `GET /api/sensors`
+
+캠퍼스 환경 센서의 설치 위치를 GeoJSON Point로 반환합니다(`sensor`, `team`, 기록 기간, 판독 수, 유효율). 측정값은 담지 않습니다. 원본(`data/raw/sensors/`)은 커밋하지 않고, 위치만 뽑은 `data/cbnu_sensors.geojson`을 `scripts/build_sensor_sites.py`로 만듭니다. 앱은 이 위치를 파란 점과 센서 이름으로 표시합니다.
+
+### `GET /api/route`
+
+선택 시각의 체감온도로 **최단·균형·그늘 경로**를 찾습니다.
+
+```text
+/api/route?from_lat=36.630931&from_lon=127.454222&to_lat=36.626035&to_lon=127.456245&datetime=2026-08-07T15:00:00+09:00
+```
+
+보행로는 OpenStreetMap의 걸을 수 있는 길(`data/cbnu_walk_network.geojson`, `scripts/build_walk_network.py`)이며 4m 이하 조각으로 나눠 조각마다 체감온도 격자 값을 읽습니다. 조각 비용은 `길이 × (1 + α × 더위)`이고, 더위는 그 시각 그늘의 체감온도(캠퍼스 하위 5%, 단 26°C 이상)보다 얼마나 더운지입니다. 그늘 경로는 최단 경로보다 최대 30%, 균형 경로는 15%까지 길어질 수 있고, 최단 경로와 같으면 빠집니다. 밤이나 모두 쾌적한 날에는 최단 경로만 돌려줍니다. 각 경로에는 거리, 최단 대비 추가 거리, 걷는 시간, 평균 체감온도, 햇빛 아래를 걷는 시간(`sun_minutes`)이 들어 있습니다. 앱에서는 `길찾기` 버튼으로 건물을 고르거나 지도를 길게 눌러 출발지와 도착지를 정합니다.
+
+### `GET /api/tiles/satellite/{z}/{x}/{y}.jpeg`
+
+앱의 위성 배경 지도용 VWorld 항공사진 타일입니다. 앱이 VWorld를 직접 부르지 않고 서버를 거치므로 VWorld 키는 서버에만 있습니다. 캠퍼스 주변(경도 127.43–127.49, 위도 36.61–36.645), 줌 10–19 타일만 내주고 나머지는 404입니다. 받은 타일은 `data/raw/vworld_satellite/`(커밋하지 않음)에 저장해 다시 쓰고, `VWORLD_API_KEY`가 없으면 저장된 타일만 내줍니다. 앱의 `일반`/`위성` 버튼으로 배경을 바꿀 수 있습니다.
+
 ### `GET /api/weather/period`
 
 기상 자료가 있는 기간과 실시간 여부를 반환합니다. 앱은 이 값으로 처음 열 날짜와 날짜 선택 범위를 정합니다.
@@ -214,7 +232,7 @@ timezone 없는 값은 `Asia/Seoul`로 해석합니다. offset이 있는 값은 
 한계:
 
 - 기온·습도·바람은 캠퍼스 전체에 같은 기상청 값을 씁니다. 지점별 차이는 복사(그늘·지면) 효과만 반영됩니다.
-- 토지피복지도는 캠퍼스 안 작은 숲·가로수·중정의 나무를 대부분 놓치므로, 빠진 나무는 `data/cbnu_street_trees.geojson`에 직접 입력하면 서버를 다시 시작할 때 반영됩니다(형식은 파일의 `metadata` 참고).
+- 토지피복지도는 캠퍼스 안 작은 숲·가로수·중정의 나무를 대부분 놓치므로, VWorld 항공사진에서 자동 추출한 수관(`data/cbnu_tree_canopy.geojson`, 약 38 ha)을 더합니다. 높이는 수관 면적으로 추정하고 모두 활엽수로 둡니다. 빠지거나 잘못 잡힌 나무는 `data/cbnu_street_trees.geojson`에 직접 입력하면 서버를 다시 시작할 때 반영됩니다(형식은 파일의 `metadata` 참고).
 - 높이가 없는 건물(38동)과 수치지도에만 있는 건물·무벽건물은 아직 그늘을 만들지 않습니다.
 - 앱의 `그림자` 모드는 여전히 건물만으로 계산한 평면 그림자(`/api/shadows`)입니다. 나무와 지형 그늘은 체감온도 히트맵에만 들어 있습니다.
 - 기상 자료가 없는 시각은 404를 반환합니다. 스냅샷 시작(2025-06-01) 이전과, 최근 관측으로부터 3시간이 지난 시각이 여기에 해당합니다.
@@ -267,7 +285,10 @@ PostGIS 원본 geometry는 교환과 지도 렌더링에 적합한 `EPSG:4326`�
 | `kma_asos_131_hourly.meta.json` | 위 자료의 출처·기간·열 설명 |
 | `cbnu_dtm_5m.npz` | 캠퍼스 + 300m 지형 5m 격자. 수치지도 1:5,000 등고선 680개·표고점 5,726개를 삼각망으로 보간 (`scripts/build_terrain.py`) |
 | `cbnu_landcover.geojson` | 환경부 세분류 토지피복지도를 캠퍼스 + 100m로 잘라 표면 유형으로 묶은 것 (`scripts/build_landcover.py`) |
+| `cbnu_tree_canopy.geojson` | VWorld 항공사진에서 자동 추출한 나무 수관, 캠퍼스 + 30m (`scripts/build_tree_canopy.py`) |
 | `cbnu_street_trees.geojson` | 가로수. 직접 입력하는 파일로 지금은 비어 있음 |
+| `cbnu_sensors.geojson` | 환경 센서 위치 (`scripts/build_sensor_sites.py`, 원본은 미커밋) |
+| `cbnu_walk_network.geojson` | 길찾기용 보행로, OSM에서 걸을 수 있는 길 중 가장 큰 연결망 (`scripts/build_walk_network.py`) |
 
 지형은 국토지리정보원이 공개하는 DEM이 90m뿐이라(고해상도는 공개제한) 수치지도로 직접 만들었습니다. 캠퍼스 안 90m 격자 106칸에서 공개DEM과 비교하면 평균 차이 +0.8m, RMSE 2.9m이고(공개DEM 자체 RMSE 6.2m), 캠퍼스 고저차는 49~90m입니다. 수치지도 도엽이 캠퍼스 서쪽 경계에서 끝나서 그 서쪽 여백은 가장자리 값을 연장했습니다. 원본 수치지도·토지피복지도는 `data/raw/`(커밋 제외)에 두고, 받는 방법은 작업 노트 `docs/03-data-collection.md`에 있습니다.
 
@@ -294,6 +315,7 @@ OSM 외의 데이터는 [공공누리 제1유형(출처표시)](https://www.kogl
 | 공개DEM 90m | 국토교통부 국토지리정보원 | 이용허락범위 제한 없음 | 검증에만 사용, 커밋하지 않음 |
 | 세분류 토지피복지도 2025 | 기후에너지환경부 | 공공누리 제1유형 | `cbnu_landcover.geojson` (캠퍼스로 자르고 분류를 묶음) |
 | 건축물대장 표제부 | 국토교통부 | 이용허락범위 제한 없음 | `cbnu_building_ledger.json` |
+| 항공사진 (WMTS Satellite) | 국토교통부 공간정보 오픈플랫폼(VWorld) | VWorld 오픈API 이용약관 (재배포 조건 확인 필요) | `cbnu_tree_canopy.geojson` (사진에서 추출한 수관 윤곽만; 타일은 커밋하지 않음) |
 
 토지피복지도는 공개 등급 자료를 온라인 자료신청으로 받았습니다. 메타데이터의 보안 제약은 공개제한 자료에만 해당합니다. 앱 화면 하단에도 `기상청 · 국토지리정보원 · 기후에너지환경부`를 출처로 표시합니다.
 
@@ -310,9 +332,14 @@ OSM 외의 데이터는 [공공누리 제1유형(출처표시)](https://www.kogl
 | `WEATHER_DATA_PATH` | 체감온도 계산에 쓰는 ASOS 시간자료 CSV |
 | `TERRAIN_DATA_PATH` | 지형 격자 (`cbnu_dtm_5m.npz`) |
 | `LANDCOVER_DATA_PATH` | 토지피복 (`cbnu_landcover.geojson`) |
+| `TREE_CANOPY_DATA_PATH` | 항공사진 수관 (`cbnu_tree_canopy.geojson`); 없으면 없이 계산 |
 | `STREET_TREES_DATA_PATH` | 가로수 (`cbnu_street_trees.geojson`); 없으면 가로수 없이 계산 |
+| `SENSORS_DATA_PATH` | 센서 위치 (`cbnu_sensors.geojson`); 없으면 빈 목록 |
+| `SATELLITE_CACHE_DIR` | 위성 타일 저장 위치, 기본 `data/raw/vworld_satellite` |
 | `KMA_APIHUB_KEY` | 기상청 API허브 인증키. 있으면 실시간 기상을 이어 받음; 커밋 금지 |
 | `WEATHER_REFRESH_SECONDS` | API허브 조회 간격(초), 기본 300 |
+| `VWORLD_API_KEY` | VWorld 키. 위성 배경 타일(서버), 항공사진 수관 추출·필지 수집 스크립트에 사용; 저장소에 커밋 금지 |
+| `VWORLD_DOMAIN` | VWorld 키 등록 도메인, 로컬 수집 기본값 `http://localhost` |
 | `DATA_GO_KR_API_KEY` | `scripts/fetch_building_ledger.py`, `scripts/fetch_kma_asos.py`용 공공데이터포털 키(Decoding); 커밋 금지 |
 | `CLOUDFLARE_TUNNEL_TOKEN` | 선택적 Tunnel token; 저장소에 커밋 금지 |
 | `API_BASE_URL` | Android build용 API base URL |
