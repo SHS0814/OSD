@@ -29,6 +29,7 @@ from .thermal import extraterrestrial_horizontal
 
 HOUR = timedelta(hours=1)
 PERSISTENCE_LIMIT = timedelta(hours=3)
+MISSING_FILL = timedelta(hours=3)
 
 # Below this much sun above the atmosphere the hour's clearness index is mostly
 # noise (the hour straddles sunrise), so it is estimated from cloud cover.
@@ -92,11 +93,22 @@ class WeatherStore:
             return rows[index]
         return None
 
+    def _last_value(self, stamp: datetime, column: str) -> float | None:
+        """Value at ``stamp``, or the latest one within MISSING_FILL before it.
+
+        Single hours go missing in live data (API허브 reported no cloud amount
+        for 청주 at 19:00 on 2026-09-27), and that must not make "now" unanswerable.
+        """
+        for back in range(int(MISSING_FILL / HOUR) + 1):
+            row = self._row(stamp - back * HOUR)
+            if row is not None and row.get(column) is not None:
+                return row[column]
+        return None
+
     def _state(self, when: datetime, column: str) -> float:
         before = when.replace(minute=0, second=0, microsecond=0)
         after = before if before == when else before + HOUR
-        low_row = self._row(before)
-        low_value = low_row.get(column) if low_row else None
+        low_value = self._last_value(before, column)
         high_row = self._row(after)
         high_value = high_row.get(column) if high_row else None
         if low_value is None and high_value is None:
@@ -119,7 +131,7 @@ class WeatherStore:
         altitude = calculate_solar_position(midpoint, self.latitude, self.longitude).altitude
         extraterrestrial = extraterrestrial_horizontal(midpoint.timetuple().tm_yday, altitude)
         if extraterrestrial < MIN_RELIABLE_EXTRATERRESTRIAL:
-            cloud = min(max((row.get("cloud") or 0.0) / 10.0, 0.0), 1.0)
+            cloud = min(max((self._last_value(hour_end, "cloud") or 0.0) / 10.0, 0.0), 1.0)
             return clearness_from_cloud(cloud), mean_global
         return min(mean_global / extraterrestrial, 1.0), mean_global
 
