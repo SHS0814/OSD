@@ -14,6 +14,7 @@ import kr.ac.cbnu.campusshade.databinding.ActivityMainBinding
 import kr.ac.cbnu.campusshade.map.MapLayers
 import kr.ac.cbnu.campusshade.ui.Legend
 import kr.ac.cbnu.campusshade.ui.MapSettingsSheet
+import kr.ac.cbnu.campusshade.ui.SearchPanel
 import kr.ac.cbnu.campusshade.ui.TimeSheet
 import okhttp3.Call
 import org.maplibre.android.MapLibre
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     // 시각 선택과 지도 설정은 바텀시트에 담는다. 한 번 만들어 두고 다시 연다.
     private lateinit var timeSheet: TimeSheet
     private lateinit var mapSettings: MapSettingsSheet
+    private lateinit var search: SearchPanel
     private lateinit var legend: Legend
     private val handler = Handler(Looper.getMainLooper())
     private var map: MapLibreMap? = null
@@ -84,10 +86,12 @@ class MainActivity : AppCompatActivity() {
         api = ApiClient(this) { binding.statusText.text = it }
         timeSheet = TimeSheet(this, binding)
         mapSettings = MapSettingsSheet(this)
+        search = SearchPanel(this, binding)
         legend = Legend(binding.legend)
 
         setToCurrentTime(requestImmediately = false)
         configureControls()
+        configureSearch()
         updateDataDateLabel()
         binding.mapView.getMapAsync { mapLibreMap ->
             map = mapLibreMap
@@ -99,6 +103,7 @@ class MainActivity : AppCompatActivity() {
             // 저작권 표시는 아래 카드에 모아 둔다.
             mapLibreMap.uiSettings.isLogoEnabled = false
             mapLibreMap.uiSettings.isAttributionEnabled = false
+            mapLibreMap.addOnMapClickListener { point -> onMapTapped(point) }
             mapLibreMap.setStyle(Style.Builder().fromUri(MapStyle.BASE_STYLE_URL)) { style ->
                 mapStyle = style
                 installDataLayers(style)
@@ -217,6 +222,27 @@ class MainActivity : AppCompatActivity() {
         updateTimeCard()
     }
 
+    // ---- 건물 검색 ----
+
+    private fun configureSearch() {
+        search.onFocus = { building ->
+            map?.animateCamera(CameraUpdateFactory.newLatLngZoom(building.latLng(), SELECTED_ZOOM), 700)
+        }
+    }
+
+    private fun Building.latLng() = LatLng(latitude, longitude)
+
+    // ---- 지도 누르기 ----
+
+    private fun onMapTapped(point: LatLng): Boolean {
+        // 검색 결과가 열려 있으면 첫 탭은 닫기만 한다.
+        if (search.isShowingResults) {
+            search.hideResults()
+            return true
+        }
+        return false
+    }
+
     // ---- 지도 데이터 ----
 
     private fun installDataLayers(style: Style) {
@@ -238,6 +264,7 @@ class MainActivity : AppCompatActivity() {
     private fun requestBuildings() {
         api.fetchJson(api.url("api/buildings").build(), null) { root ->
             layers?.buildings?.show(root.toString())
+            search.buildings = Places.buildings(root)
         }
     }
 
@@ -359,6 +386,7 @@ class MainActivity : AppCompatActivity() {
         private val CAMPUS_CENTER = LatLng(36.6268, 127.4583)
         private val SEOUL_ZONE = ZoneId.of("Asia/Seoul")
         private val HOUR_MINUTE = DateTimeFormatter.ofPattern("HH:mm")
+        private const val SELECTED_ZOOM = 17.5
         private const val START_MINUTES = 6 * 60
         private const val END_MINUTES = 20 * 60
     }

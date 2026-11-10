@@ -39,5 +39,12 @@
     <string name="show_heatmap">체감온도</string>
     <string name="show_shadows">그림자</string>
 
+    <!-- 건물 검색 -->
+    <string name="search_hint">건물 검색 (예: N13, 도서관)</string>
+    <string name="search_clear">검색어 지우기</string>
+    <string name="search_empty">검색 결과가 없어요</string>
+    <string name="search_loading">건물 목록을 불러오는 중…</string>
+    <string name="selection_close">선택 닫기</string>
+
     <string name="attribution">© OpenStreetMap contributors · OpenFreeMap · OpenMapTiles · 기상청 · 국토지리정보원 · 기후에너지환경부 · VWorld 항공사진</string>
 </resources>
