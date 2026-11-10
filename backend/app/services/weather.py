@@ -5,7 +5,9 @@ when an API허브 key is configured, is extended with newer hours as they are
 observed (services/kma_hub.py), so "now" can be answered.
 
 State variables (air temperature, humidity, wind, cloud) are observed on the
-hour and interpolated linearly in between. Solar radiation is different:
+hour and interpolated linearly in between. Wind direction is an angle, so it
+is interpolated as a vector (350° and 10° give 0°, not 180°); it is None when
+the wind is calm (ASOS writes calm as wd = 0 with ws < 0.5 m/s). Solar radiation is different:
 ``icsr`` is the energy accumulated over the hour *ending* at its timestamp, so
 it is turned into a clearness index for that hour and then scaled by where the
 sun is at the requested instant. That keeps the sky as cloudy as observed
@@ -19,6 +21,7 @@ PERSISTENCE_LIMIT, and the sample says so.
 from __future__ import annotations
 
 import csv
+import math
 from bisect import bisect_left
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -26,6 +29,7 @@ from pathlib import Path
 from .contracts import WeatherSample
 from .solar import SEOUL_TZ, calculate_solar_position, localize_datetime
 from .thermal import extraterrestrial_horizontal
+from .wind import CALM_MS
 
 HOUR = timedelta(hours=1)
 PERSISTENCE_LIMIT = timedelta(hours=3)
@@ -120,6 +124,42 @@ class WeatherStore:
         weight = (when - before) / HOUR
         return float(low_value + (high_value - low_value) * weight)
 
+    def _wind_vector(self, stamp: datetime, fill: bool) -> tuple[float, float] | None:
+        """(east, north) components of the wind blowing *from* the observed
+        direction at ``stamp``, scaled by speed; None when calm or missing."""
+        for back in range(int(MISSING_FILL / HOUR) + 1 if fill else 1):
+            row = self._row(stamp - back * HOUR)
+            if row is None or row.get("wd") is None or row.get("ws") is None:
+                continue
+            speed, direction = row["ws"], row["wd"]
+            if direction == 0 or speed < CALM_MS:
+                return None
+            angle = math.radians(direction)
+            return speed * math.sin(angle), speed * math.cos(angle)
+        return None
+
+    def _direction(self, when: datetime, speed_ms: float) -> float | None:
+        """Wind direction at ``when``, interpolated as a vector between the hours."""
+        if speed_ms < CALM_MS:
+            return None
+        before = when.replace(minute=0, second=0, microsecond=0)
+        after = before if before == when else before + HOUR
+        low = self._wind_vector(before, fill=True)
+        high = self._wind_vector(after, fill=False) if after != before else low
+        if low is None and high is None:
+            return None
+        weight = (when - before) / HOUR
+        if low is None or high is None:
+            east, north = low or high
+        else:
+            east = low[0] + (high[0] - low[0]) * weight
+            north = low[1] + (high[1] - low[1]) * weight
+            if math.hypot(east, north) < 1e-6:  # opposite and equal: take the nearer hour
+                east, north = low if weight < 0.5 else high
+        degrees = math.degrees(math.atan2(east, north)) % 360.0
+        # 0 is how ASOS spells calm; a north wind is 360.
+        return degrees if degrees > 0.05 else 360.0
+
     def _clearness(self, hour_end: datetime) -> tuple[float, float]:
         """Clearness index and mean irradiance of the observed hour ending at ``hour_end``."""
         row = self._row(hour_end)
@@ -172,4 +212,5 @@ class WeatherStore:
             clearness_index=clearness,
             global_horizontal=max(global_now, 0.0),
             hour_mean_global_horizontal=hour_mean,
+            wind_direction_deg=self._direction(state_at, wind_ms),
         )
