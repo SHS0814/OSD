@@ -13,3 +13,5 @@ docs/
 
 # 외부 기관에서 받은 원본 데이터 (재배포 조건이 제각각이라 가공 결과만 커밋)
 data/raw/
+# 센서망 원본 내보내기 (MAC 등 원본값 포함). 커밋 금지, 원본은 data/raw/sensors/에 둔다
+data/opensrc_*.csv
