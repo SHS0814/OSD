@@ -1,6 +1,11 @@
+from datetime import datetime
+
+import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.services.wind import K_BG
 
 
 def test_health() -> None:
@@ -185,6 +190,80 @@ def test_night_route_is_only_the_shortest() -> None:
         ).json()
     assert payload["mode"] == "none"
     assert [route["properties"]["kind"] for route in payload["routes"]["features"]] == ["shortest"]
+
+
+def test_microclimate_uses_the_per_cell_wind() -> None:
+    from app.services.solar import calculate_solar_position, parse_requested_datetime
+
+    with TestClient(app) as client:
+        payload = client.get("/api/microclimate", params={"datetime": WINTER_NOON}).json()
+        assert payload["inputs"]["wind_field"] is True
+        assert payload["weather"]["wind_direction_deg"] == 290.0
+        model = app.state.microclimate
+        when = parse_requested_datetime(datetime.fromisoformat(WINTER_NOON), None, None)
+        weather = app.state.weather.at(when)
+        solar = calculate_solar_position(when, 36.6282, 127.4567)
+        uniform = model.fields(when, solar, weather).utci
+        per_cell = model.fields(when, solar, weather, wind_direction_deg=290.0).utci
+    # Sheltered wind on a cold day feels warmer than the open-site ASOS wind;
+    # only passages and corners where the flow speeds up past it feel colder.
+    valid = np.isfinite(uniform) & np.isfinite(per_cell)
+    assert np.mean(per_cell[valid] >= uniform[valid] - 1e-6) > 0.95
+    assert np.mean(per_cell[valid] - uniform[valid]) > 0.5
+    assert payload["summary"]["utci_mean"] == pytest.approx(float(np.nanmean(per_cell)), abs=0.1)
+
+
+def test_wind_points_for_drawing_arrows() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/wind", params={"datetime": WINTER_NOON})
+        dense = client.get("/api/wind", params={"datetime": WINTER_NOON, "step_m": 12}).json()
+        too_dense = client.get("/api/wind", params={"datetime": WINTER_NOON, "step_m": 4})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["type"] == "FeatureCollection"
+    assert payload["wind"] == {"asos_speed_ms": 3.1, "direction_deg": 290.0, "wind_field": True}
+    points = payload["features"]
+    assert points
+    assert len(dense["features"]) > 3 * len(points)
+    assert "질량보존" in payload["note"]
+    deviations = []
+    for point in points:
+        lon, lat = point["geometry"]["coordinates"]
+        assert 127.44 < lon < 127.47 and 36.62 < lat < 36.64
+        props = point["properties"]
+        assert 0 < props["factor"] <= 2 * K_BG
+        assert props["speed_ms"] == pytest.approx(3.1 * props["factor"], abs=0.01)
+        assert 0 < props["direction_deg"] <= 360
+        deviations.append(abs((props["direction_deg"] - 290 + 180) % 360 - 180))
+    # The flow turns round the buildings, but mostly keeps to the ASOS direction.
+    assert max(deviations) > 30
+    assert np.median(deviations) < 20
+    # No arrow stands on a cell that is mostly building.
+    from shapely.geometry import MultiPoint
+
+    from app.services.geometry import to_projected
+    from app.services.grid import CELL_M
+
+    model = app.state.microclimate
+    projected = to_projected(MultiPoint([p["geometry"]["coordinates"] for p in points])).geoms
+    rows = [int((model.grid.origin_y - p.y) // CELL_M) for p in projected]
+    cols = [int((p.x - model.grid.origin_x) // CELL_M) for p in projected]
+    assert model.valid[rows, cols].all()
+    assert too_dense.status_code == 422
+
+
+def test_calm_wind_has_no_arrows() -> None:
+    with TestClient(app) as client:
+        payload = client.get("/api/wind", params={"datetime": "2026-01-15T11:00:00+09:00"}).json()
+    assert payload["wind"]["direction_deg"] is None  # ASOS: ws 0.1, wd 0
+    assert payload["wind"]["wind_field"] is True
+    assert payload["features"] == []
+
+
+def test_wind_outside_the_snapshot_is_404() -> None:
+    with TestClient(app) as client:
+        response = client.get("/api/wind", params={"datetime": "2030-01-01T12:00:00+09:00"})
+    assert response.status_code == 404
 
 
 def test_route_from_off_campus_is_refused() -> None:
