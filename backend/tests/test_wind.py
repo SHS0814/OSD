@@ -1,10 +1,11 @@
 """Per-cell wind (services/wind.py) on synthetic scenes where the answer is known."""
 
 import math
-from datetime import date
 
 import numpy as np
 import pytest
+
+from shapely.affinity import rotate, scale
 
 from app.services.wind import (
     K_BG,
@@ -19,8 +20,7 @@ from app.services.wind import (
     sector_of,
 )
 from fakes import cell_of, square_obstacles
-
-SUMMER, WINTER = date(2025, 8, 5), date(2026, 1, 15)
+from test_geometry_field import SUMMER, WINTER, cell_at, scene, square
 
 NORTH, EAST, SOUTH, WEST = 0, 4, 8, 12
 
@@ -63,83 +63,68 @@ def test_the_field_needs_only_an_obstacle_raster() -> None:
     assert np.nanmedian(bearing) == pytest.approx(270, abs=1)
 
 
-def test_open_ground_is_unsheltered() -> None:
-    k = WindField(square_obstacles()).shelter_factor(WEST, leaf_on=True)
+def test_open_ground_gets_the_background_factor() -> None:
+    k, bearing = WindField(scene().obstacles).wind(270.0, leaf_on=True)
     assert np.nanmin(k) == pytest.approx(K_BG)
     assert np.nanmax(k) == pytest.approx(K_BG)
+    assert np.nanmin(bearing) == pytest.approx(270.0)
+    assert np.nanmax(bearing) == pytest.approx(270.0)
 
 
 def test_a_building_shelters_its_lee_and_the_wake_recovers() -> None:
-    # A stand-in raster: one 10 m tall, 20 m wide building; a west wind
-    # leaves its wake to the east.
-    raster = square_obstacles(buildings=[(0, 0, 10, 10.0)])
-    k = WindField(raster).shelter_factor(WEST, leaf_on=True)
-    upwind, near, mid, far, beside = (
-        k[cell_of(raster, x, y)] for x, y in [(-40, 0), (14, 0), (60, 0), (130, 0), (40, 60)]
-    )
+    # The shelter model S alone, without the flow round the building.
+    # 10 m tall, 20 m wide; a west wind leaves its wake to the east.
+    model = scene(buildings=[(square(0, 0, 10), 10.0)])
+    k = WindField(model.obstacles).shelter_factor(WEST, leaf_on=True)
+    upwind = k[cell_at(model, -40, 0)]
+    near = k[cell_at(model, 14, 0)]
+    mid = k[cell_at(model, 60, 0)]
+    far = k[cell_at(model, 130, 0)]
+    beside = k[cell_at(model, 40, 60)]
     assert upwind == pytest.approx(K_BG)
     assert beside == pytest.approx(K_BG)
     assert near < mid < far < K_BG
-    # The cell centre 14 m from the middle lies 4-8 m past the rasterised wall.
-    assert K_BG * (1 - 0.7 * np.exp(-4 / 60)) <= near <= K_BG * (1 - 0.7 * np.exp(-8 / 60)) * 1.05
-    k_east = WindField(raster).shelter_factor(EAST, leaf_on=True)
+    assert near == pytest.approx(K_BG * (1 - 0.7 * np.exp(-4 / 60)), rel=0.1)
     # The same building, wind from the east: the west side is now the lee.
-    assert k_east[cell_of(raster, -14, 0)] < 0.5 * K_BG
-    assert k_east[cell_of(raster, 14, 0)] == pytest.approx(K_BG)
+    k_east = WindField(model.obstacles).shelter_factor(EAST, leaf_on=True)
+    # Cell centres do not sit symmetrically about the walls, hence the tolerance.
+    assert k_east[cell_at(model, -14, 0)] == pytest.approx(near, rel=0.1)
+    assert k_east[cell_at(model, 14, 0)] == pytest.approx(K_BG)
 
 
 def test_bare_crowns_shelter_less_than_crowns_in_leaf() -> None:
-    raster = square_obstacles(crowns=[(0, 0, 10, 12.0)])
-    field = WindField(raster)
-    lee = cell_of(raster, 20, 0)
+    model = scene(canopies=[square(0, 0, 10)])
+    field = WindField(model.obstacles)
+    lee = cell_at(model, 20, 0)
     in_leaf = field.shelter_factor(WEST, leaf_on=True)[lee]
     bare = field.shelter_factor(WEST, leaf_on=False)[lee]
     assert in_leaf < bare < K_BG
+    under = cell_at(model, 0, 0)
     # Own crown at x = 0: deficit 0.7 × (1 − τ), τ = 0.2 in leaf.
-    under = cell_of(raster, 0, 0)
     assert field.shelter_factor(WEST, leaf_on=True)[under] == pytest.approx(K_BG * (1 - 0.7 * 0.8), rel=0.02)
 
 
+def test_frontal_area_depends_on_the_wind_direction() -> None:
+    # A wall running east-west, then one running south-west to north-east.
+    long_wall = scale(square(0, 0, 4), xfact=15, yfact=1)  # 120 m × 8 m, east-west
+    ew = WindField(scene(buildings=[(long_wall, 10.0)]).obstacles)
+    assert ew.morphometry(NORTH, True)["frontal_index"] > 5 * ew.morphometry(EAST, True)["frontal_index"]
+    diagonal = WindField(scene(buildings=[(rotate(long_wall, 45, origin="centroid"), 10.0)]).obstacles)
+    # Its long side faces north-west / south-east. The raster staircase along a
+    # diagonal edge adds frontal area end-on, so the contrast is smaller.
+    assert diagonal.morphometry(14, True)["frontal_index"] > 2 * diagonal.morphometry(2, True)["frontal_index"]
+
+
 def test_wind_ms_scales_asos_speed_and_uses_the_season() -> None:
-    raster = square_obstacles(crowns=[(0, 0, 10, 12.0)])
-    field = WindField(raster)
-    under = cell_of(raster, 0, 0)
+    model = scene(canopies=[square(0, 0, 10)])
+    field = WindField(model.obstacles)
+    under = cell_at(model, 0, 0)
     summer = field.wind_ms(3.0, 270, SUMMER)
     winter = field.wind_ms(3.0, 270, WINTER)
     assert summer[under] < winter[under]
-    assert np.nanmax(summer[raster.valid]) == pytest.approx(3.0 * K_BG)
+    assert np.nanmax(summer[model.valid]) == pytest.approx(3.0 * K_BG)
     calm = field.wind_ms(0.3, 0, SUMMER)  # calm: mean over the sectors
     assert np.all(np.isfinite(calm))
-
-
-def test_frontal_area_depends_on_the_wind_direction() -> None:
-    # A wall of 8 m squares running east-west, 120 m × 8 m.
-    wall = tuple((x, 0.0, 4.0, 10.0) for x in range(-56, 57, 8))
-    field = WindField(square_obstacles(buildings=wall))
-    assert field.morphometry(NORTH, True)["frontal_index"] > 5 * field.morphometry(EAST, True)["frontal_index"]
-
-
-def test_field_combines_flow_and_shelter_without_counting_the_lee_twice() -> None:
-    raster = square_obstacles(buildings=[(0, 0, 10, 10.0)])
-    field = WindField(raster)
-    k, _ = field.wind(270.0, leaf_on=True)
-    shelter = field.shelter_factor(WEST, leaf_on=True)
-    u, v, _ = field.flow(270.0)
-    m = np.hypot(u, v) / K_BG
-    lee = cell_of(raster, 14, 0)
-    assert k[lee] == pytest.approx(K_BG * min(m[lee], shelter[lee] / K_BG), rel=1e-6)
-    front = cell_of(raster, -14, 0)
-    assert shelter[front] == pytest.approx(K_BG)
-    assert k[front] < 0.8 * K_BG
-
-
-def test_arrows_skip_buildings() -> None:
-    raster = square_obstacles(buildings=[(0, 0, 20, 10.0)])
-    field = WindField(raster)
-    points = arrow_features(field, 3.0, 270.0, SUMMER, step_cells=1)
-    assert len(points) == int(raster.valid.sum()) < int(raster.inside.sum())
-    assert all(0 < p["properties"]["direction_deg"] <= 360 for p in points)
-    assert arrow_features(field, 0.2, 270.0, SUMMER, step_cells=1) == []  # calm
 
 
 # -- the 2D mass-consistent flow -------------------------------------------------
@@ -199,3 +184,72 @@ def test_a_walled_in_courtyard_has_no_2d_flow() -> None:
     assert solver.walled_in.sum() == 100
     u, v = solver.solve(1.0, 0.0).cell_velocity()
     assert np.hypot(u, v)[15:25, 15:25].max() == 0.0
+
+
+def test_field_combines_flow_and_shelter_without_counting_the_lee_twice() -> None:
+    # 10 m tall, 20 m wide; west wind.
+    model = scene(buildings=[(square(0, 0, 10), 10.0)])
+    field = WindField(model.obstacles)
+    k, bearing = field.wind(270.0, leaf_on=True)
+    shelter = field.shelter_factor(WEST, leaf_on=True)
+    u, v, _ = field.flow(270.0)
+    m = np.hypot(u, v) / K_BG
+    lee = cell_at(model, 14, 0)
+    # Both slow the lee; the stronger deficit counts, not their product.
+    assert k[lee] == pytest.approx(K_BG * min(m[lee], shelter[lee] / K_BG), rel=1e-6)
+    assert k[lee] > K_BG * m[lee] * shelter[lee] / K_BG
+    # In front of the wall only the flow sees the slow-down; S says open.
+    front = cell_at(model, -14, 0)
+    assert shelter[front] == pytest.approx(K_BG)
+    assert k[front] < 0.8 * K_BG
+    # Beside the building the flow speeds up and turns back along the wall,
+    # while round the front corners it turns away from the west.
+    beside = cell_at(model, 0, 16)
+    assert K_BG < k[beside] <= K_BG * SPEEDUP_MAX
+    assert bearing[beside] == pytest.approx(270, abs=5)
+    assert bearing[cell_at(model, -14, 8)] < 260
+    assert bearing[cell_at(model, -14, -8)] > 280
+    # Building cells are not valid: no value there.
+    assert not np.isfinite(k[cell_at(model, 0, 0)])
+
+
+def test_field_speeds_up_between_two_buildings() -> None:
+    model = scene(buildings=[
+        (scale(square(0, 18, 10), xfact=1, yfact=1.4), 10.0),
+        (scale(square(0, -18, 10), xfact=1, yfact=1.4), 10.0),
+    ])
+    k, bearing = WindField(model.obstacles).wind(270.0, leaf_on=True)
+    gap = cell_at(model, 0, 0)
+    assert k[gap] > 1.2 * K_BG
+    assert bearing[gap] == pytest.approx(270, abs=5)
+
+
+def test_wind_for_other_directions_rotates_with_it() -> None:
+    model = scene(buildings=[(square(0, 0, 10), 10.0)])
+    field = WindField(model.obstacles)
+    k_west, _ = field.wind(270.0, leaf_on=True)
+    k_south, bearing_south = field.wind(180.0, leaf_on=True)
+    # A square building: beside it for a west wind is north of it, for a south
+    # wind east of it. Cell centres do not sit symmetrically about the walls,
+    # hence the tolerance.
+    assert k_south[cell_at(model, 16, 0)] == pytest.approx(k_west[cell_at(model, 0, 16)], rel=0.1)
+    assert k_south[cell_at(model, 16, 0)] > K_BG
+    assert np.nanmedian(bearing_south) == pytest.approx(180, abs=1)
+    calm = field.factor(None, leaf_on=True)
+    assert np.all(np.isfinite(calm[model.valid]))
+
+
+def test_arrows_follow_the_cell_wind_and_skip_buildings() -> None:
+    model = scene(buildings=[(square(0, 0, 20), 10.0)])
+    field = WindField(model.obstacles)
+    points = arrow_features(field, 3.0, 270.0, SUMMER, step_cells=1)
+    k, bearing = field.wind(270.0, leaf_on=True)
+    assert len(points) == int(model.valid.sum())
+    assert len(points) < int(model.inside.sum())  # the building's cells are left out
+    directions = [p["properties"]["direction_deg"] for p in points]
+    assert all(0 < d <= 360 for d in directions)
+    assert min(directions) < 250 and max(directions) > 290
+    fastest = max(points, key=lambda p: p["properties"]["factor"])["properties"]
+    assert fastest["factor"] > K_BG
+    assert fastest["speed_ms"] == pytest.approx(3.0 * fastest["factor"], abs=0.01)
+    assert arrow_features(field, 0.2, 270.0, SUMMER, step_cells=1) == []  # calm
