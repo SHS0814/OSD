@@ -1,5 +1,12 @@
 import math
 
+from shapely import affinity
+from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import unary_union
+
+from .geometry import iter_polygons, to_projected
+
 
 def calculate_shadow_length(building_height_m: float, solar_altitude_deg: float) -> float:
     if building_height_m < 0:
@@ -16,4 +23,58 @@ def calculate_shadow_vector(shadow_length_m: float, solar_azimuth_deg: float) ->
         shadow_length_m * math.sin(shadow_azimuth),
         shadow_length_m * math.cos(shadow_azimuth),
     )
+
+
+def _swept_ring(coords: list[tuple[float, float]], dx: float, dy: float) -> list[Polygon]:
+    quads: list[Polygon] = []
+    for start, end in zip(coords, coords[1:]):
+        quads.append(
+            Polygon(
+                [
+                    start,
+                    end,
+                    (end[0] + dx, end[1] + dy),
+                    (start[0] + dx, start[1] + dy),
+                ]
+            )
+        )
+    return quads
+
+
+def building_shadows(buildings, solar) -> list[tuple[object, float, BaseGeometry]]:
+    """Projected shadow of every building with a height, as (building, length, polygon).
+
+    Empty when the sun is at or below the horizon. Buildings without a surveyed
+    height cast nothing rather than an estimated shadow.
+    """
+    if solar.altitude <= 0:
+        return []
+    shadows = []
+    for building in buildings:
+        if building.height_m is None:
+            continue
+        length = calculate_shadow_length(building.height_m, solar.altitude)
+        polygon = create_shadow_polygon(to_projected(building.geometry), length, solar.azimuth)
+        shadows.append((building, length, polygon))
+    return shadows
+
+
+def create_shadow_polygon(
+    projected_building: BaseGeometry,
+    shadow_length_m: float,
+    solar_azimuth_deg: float,
+) -> BaseGeometry:
+    if shadow_length_m <= 0:
+        return projected_building.buffer(0)
+
+    dx, dy = calculate_shadow_vector(shadow_length_m, solar_azimuth_deg)
+    pieces: list[BaseGeometry] = [
+        projected_building,
+        affinity.translate(projected_building, xoff=dx, yoff=dy),
+    ]
+    for polygon in iter_polygons(projected_building):
+        pieces.extend(_swept_ring(list(polygon.exterior.coords), dx, dy))
+        for interior in polygon.interiors:
+            pieces.extend(_swept_ring(list(interior.coords), dx, dy))
+    return unary_union(pieces).buffer(0)
 
