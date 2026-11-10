@@ -1,9 +1,14 @@
 """The space side (terrain, surfaces, GeometryField) on small synthetic scenes, where the answer is known."""
 
+from datetime import date
 
 import numpy as np
 import pytest
+from app.services.surfaces import in_leaf
 from app.services.terrain import Terrain
+
+SUMMER = date(2025, 8, 5)
+WINTER = date(2026, 1, 15)
 
 
 def test_terrain_samples_bilinearly(tmp_path) -> None:
@@ -14,3 +19,9 @@ def test_terrain_samples_bilinearly(tmp_path) -> None:
     assert terrain.sample(np.array([2.5]), np.array([7.5]))[0] == pytest.approx(0.0)
     assert terrain.sample(np.array([5.0]), np.array([5.0]))[0] == pytest.approx(15.0)
     assert terrain.sample(np.array([-100.0]), np.array([7.5]))[0] == pytest.approx(0.0)
+
+
+def test_leaf_season() -> None:
+    assert in_leaf(SUMMER)
+    assert not in_leaf(WINTER)
+    assert not in_leaf(date(2026, 11, 20))
