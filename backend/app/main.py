@@ -9,6 +9,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 import numpy as np
 from shapely.geometry import shape
 
+from app.access_log import AccessLogMiddleware
 from app.api.routes import router
 from app.config import settings
 from app.db.repository import BuildingRepository
@@ -115,4 +116,6 @@ app = FastAPI(
 )
 # The microclimate grid is a long list of repeating numbers; gzip shrinks it ~5x.
 app.add_middleware(GZipMiddleware, minimum_size=1024)
+# Added last so it wraps gzip too and sees every request (see access_log.py).
+app.add_middleware(AccessLogMiddleware, salt=settings.visitor_hash_salt)
 app.include_router(router)

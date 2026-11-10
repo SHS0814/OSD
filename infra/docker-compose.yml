@@ -37,6 +37,7 @@ services:
       VWORLD_API_KEY: ${VWORLD_API_KEY:-}
       VWORLD_DOMAIN: ${VWORLD_DOMAIN:-http://localhost}
       SATELLITE_CACHE_DIR: /cache/vworld_satellite
+      VISITOR_HASH_SALT: ${VISITOR_HASH_SALT:-}
     volumes:
       - satellite_cache:/cache/vworld_satellite
     depends_on:
@@ -44,6 +45,12 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:${API_PORT:-8000}:8000"
+    # The access log is one line per request; keep at most 3 × 10 MB of it.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     restart: unless-stopped
 
   cloudflared:

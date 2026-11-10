@@ -14,4 +14,4 @@ COPY data/cbnu_buildings.geojson data/cbnu_campus_boundary.geojson data/kma_asos
 
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
