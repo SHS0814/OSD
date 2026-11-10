@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from shapely.geometry import box
 
 from app.services import sensors
 
@@ -55,3 +56,52 @@ def test_load_reads_json_records(tmp_path: Path) -> None:
     readings = sensors.load_readings(path)
     assert readings["temp"].iat[0] == 20.5
     assert readings["time"].iat[0] == pd.Timestamp("2026-09-28 00:00", tz="Asia/Seoul")
+
+
+def test_clean_readings_have_no_flags(tmp_path: Path) -> None:
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", steady(20))))
+    assert flagged["temp_ok"].all()
+    assert (flagged["qc"] == "").all()
+
+
+@pytest.mark.parametrize(
+    ("row", "reason"),
+    [
+        ((95.0, 85.0, 800), "range"),
+        ((95.0, "", 800), "missing"),
+        ((95.0, 24.0, 800), "spike"),
+        ((95.0, 20.0, 800, 36.6300, LON), "location"),
+    ],
+)
+def test_bad_temperature_is_flagged(tmp_path: Path, row: tuple, reason: str) -> None:
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", steady(20) + [row])))
+    assert reason in flags_of(flagged, 95.0)
+    assert flagged["temp_ok"].sum() == 20
+
+
+def test_duplicate_keeps_the_first(tmp_path: Path) -> None:
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", steady(5) + [(20.0, 20.0, 800)])))
+    assert flagged["qc"].str.contains("duplicate").sum() == 1
+
+
+def test_stuck_value_is_flagged(tmp_path: Path) -> None:
+    rows = [(i * 10.0, 20.0, 800) for i in range(sensors.STUCK_RUN)]
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", rows)))
+    assert flagged["qc"].str.contains("stuck").all()
+
+
+def test_outside_campus_is_flagged(tmp_path: Path) -> None:
+    campus = box(LON - 0.01, LAT - 0.01, LON + 0.01, LAT + 0.01)
+    far = box(LON + 1, LAT + 1, LON + 2, LAT + 2)
+    readings = sensors.load_readings(write_csv(tmp_path / "s.csv", steady(3)))
+    assert sensors.flag_quality(readings, campus)["temp_ok"].all()
+    assert not sensors.flag_quality(readings, far)["temp_ok"].any()
+
+
+def test_co2_faults_do_not_spoil_temperature(tmp_path: Path) -> None:
+    rows = steady(5) + [(55.0, 20.0, sensors.CO2_FLOOR_PPM), (65.0, 20.01, sensors.CO2_SATURATED_PPM)]
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", rows)))
+    assert flags_of(flagged, 55.0) == "co2_floor;"
+    assert flags_of(flagged, 65.0) == "co2_saturated;"
+    assert flagged["temp_ok"].all()
+    assert flagged["co2_ok"].sum() == 5
