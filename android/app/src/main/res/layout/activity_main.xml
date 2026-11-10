@@ -27,6 +27,83 @@
             android:layout_gravity="bottom"
             android:orientation="vertical">
 
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginHorizontal="16dp"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="bottom|end"
+                    android:gravity="end"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.card.MaterialCardView
+                        android:id="@+id/timeCard"
+                        style="@style/CampusShade.Card"
+                        android:layout_marginTop="12dp"
+                        android:clickable="true"
+                        android:focusable="true">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="8dp">
+
+                            <ImageView
+                                android:layout_width="26dp"
+                                android:layout_height="26dp"
+                                android:importantForAccessibility="no"
+                                android:src="@drawable/ic_weather_sun" />
+
+                            <LinearLayout
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:id="@+id/timeCardLabel"
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:text="@string/time_now"
+                                    android:textColor="@color/text_secondary"
+                                    android:textSize="11sp" />
+
+                                <LinearLayout
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:baselineAligned="true"
+                                    android:orientation="horizontal">
+
+                                    <TextView
+                                        android:id="@+id/timeCardDate"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:layout_marginEnd="4dp"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="13sp"
+                                        android:visibility="gone" />
+
+                                    <TextView
+                                        android:id="@+id/timeCardTime"
+                                        android:layout_width="wrap_content"
+                                        android:layout_height="wrap_content"
+                                        android:textColor="@color/text_primary"
+                                        android:textSize="20sp"
+                                        android:textStyle="bold" />
+                                </LinearLayout>
+                            </LinearLayout>
+                        </LinearLayout>
+                    </com.google.android.material.card.MaterialCardView>
+                </LinearLayout>
+            </FrameLayout>
+
             <!-- 맨 아래: 경로, 범례, 상태, 저작권 표시 -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/infoCard"
@@ -45,6 +122,15 @@
                     android:orientation="vertical"
                     android:paddingHorizontal="10dp"
                     android:paddingVertical="6dp">
+
+                    <TextView
+                        android:id="@+id/statusText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:gravity="center"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
 
                     <TextView
                         android:layout_width="match_parent"
