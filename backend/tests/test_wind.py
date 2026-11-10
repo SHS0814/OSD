@@ -92,3 +92,10 @@ def test_wind_ms_scales_asos_speed_and_uses_the_season() -> None:
     assert np.nanmax(summer[raster.valid]) == pytest.approx(3.0 * K_BG)
     calm = field.wind_ms(0.3, 0, SUMMER)  # calm: mean over the sectors
     assert np.all(np.isfinite(calm))
+
+
+def test_frontal_area_depends_on_the_wind_direction() -> None:
+    # A wall of 8 m squares running east-west, 120 m × 8 m.
+    wall = tuple((x, 0.0, 4.0, 10.0) for x in range(-56, 57, 8))
+    field = WindField(square_obstacles(buildings=wall))
+    assert field.morphometry(NORTH, True)["frontal_index"] > 5 * field.morphometry(EAST, True)["frontal_index"]
