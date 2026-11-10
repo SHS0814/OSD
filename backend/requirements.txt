@@ -3,3 +3,5 @@ uvicorn[standard]==0.35.0
 shapely==2.1.1
 pyproj==3.7.2
 astral==3.2
+pythermalcomfort==4.6.0
+certifi==2026.7.22
