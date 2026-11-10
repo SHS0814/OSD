@@ -1,15 +1,34 @@
-"""Per-cell wind for UTCI - compass sectors, calm, and the background factor K_BG.
+"""Per-cell wind K(x, y; wind direction) - shelter behind buildings and crowns.
 
-K_BG brings the 10 m wind at the open ASOS site (z0 ≈ 0.03 m) to the rougher
-campus (z0 ≈ 0.5 m, Wieringa 1992) by taking the wind as equal at a blending
-height of 60 m and bringing it down with the log law (Wieringa 1986).
-``macdonald`` gives the roughness of an array of obstacles for comparison.
+UTCI needs a wind speed, and so far the 청주 ASOS 10 m wind was used for every
+cell. Here each cell gets
+
+    wind = ASOS ws × K,   K = K_BG × S(x, y; sector, season)
+
+K_BG brings the open-site ASOS wind to the rougher campus with the log law
+(Wieringa 1986, 1992). S is what is left behind obstacles upwind: every
+obstacle of height H met at distance x leaves a wake deficit
+
+    D = D_MAX × b × exp(−x / (WAKE_E_FOLD × H))
+
+with b = 1 for a building and 1 − τ for a crown (τ its transmissivity for
+sunlight; Heisler & DeWalle 1988), S = 1 − max D over three rays across the
+22.5° sector (Hosker 1984; Cleugh 1998). The space side hands the buildings
+and crowns over as an ObstacleRaster (contracts.py). The flow round the
+buildings is still to come.
 """
 
 from __future__ import annotations
 
 import math
+import threading
+from datetime import date
 
+import numpy as np
+
+from .common import in_leaf
+from .contracts import ObstacleRaster
+from .grid import CELL_M, FINE_M, MAX_BUILDING_SHARE, PAD, SUBCELLS, ray_distances
 
 SECTORS = 16
 SECTOR_DEG = 360.0 / SECTORS
@@ -26,6 +45,15 @@ MACDONALD_BETA = 1.0
 DRAG_COEFFICIENT = 1.2
 VON_KARMAN = 0.4
 
+D_MAX = 0.7
+WAKE_E_FOLD = 6.0  # in obstacle heights
+WAKE_RANGE_M = 300.0
+RAY_SPREAD_DEG = (-7.5, 0.0, 7.5)
+MIN_OBSTACLE_M = 1.5
+# 38 of the 105 campus buildings have no known height. The shade model leaves
+# them out (a wrong height casts a wrong shadow); for wind a building of
+# unknown height certainly blocks, so it is given about three storeys.
+DEFAULT_BUILDING_HEIGHT_M = 12.0
 K_MIN = 0.05
 
 
@@ -59,3 +87,103 @@ def background_factor(z0_m: float = CAMPUS_Z0_M, d_m: float = 0.0) -> float:
 
 
 K_BG = background_factor()
+
+
+class WindField:
+    """K maps over one obstacle raster (the space side's buildings and crowns,
+    contracts.ObstacleRaster); computed per (sector, season) on first use."""
+
+    def __init__(
+        self,
+        obstacles: ObstacleRaster,
+        *,
+        k_bg: float = K_BG,
+        d_max: float = D_MAX,
+        wake_e_fold: float = WAKE_E_FOLD,
+    ):
+        self.obstacles = obstacles
+        self.k_bg = k_bg
+        self.d_max = d_max
+        self.wake_e_fold = wake_e_fold
+        footprint = obstacles.footprint
+        height = obstacles.building_height
+        height = np.where(footprint & (height < MIN_OBSTACLE_M), DEFAULT_BUILDING_HEIGHT_M, height)
+        self.building_h = height
+        self.crown_h = obstacles.crown_height
+        self.crown_kind = obstacles.crown_kind
+        self._cache: dict[tuple[int, bool], np.ndarray] = {}  # S per (sector, leaf_on)
+        self._lock = threading.Lock()
+
+    # -- geometry ---------------------------------------------------------------
+
+    def blockage(self, leaf_on: bool) -> np.ndarray:
+        """Per-fine-pixel aerodynamic blockage of crowns, 1 − τ; 0 where there is no crown."""
+        tau = self.obstacles.transmissivity(leaf_on)
+        return 1.0 - tau[self.crown_kind]
+
+    def shelter(self, sector: int, leaf_on: bool) -> np.ndarray:
+        """S per output cell (NaN where not valid): 1 − strongest upwind wake deficit."""
+        valid = self.obstacles.valid
+        rows, cols = valid.nonzero()
+        r0 = rows * SUBCELLS + SUBCELLS // 2 + PAD
+        c0 = cols * SUBCELLS + SUBCELLS // 2 + PAD
+        n_rows, n_cols = self.obstacles.footprint.shape
+        blockage = self.blockage(leaf_on)
+        strength = np.where(self.building_h > 0, 1.0, blockage)  # b per pixel
+        height = np.where(self.building_h > 0, self.building_h, self.crown_h)
+        obstacle = height >= MIN_OBSTACLE_M
+        total = np.zeros(rows.shape)
+        distances = np.concatenate([[0.0], ray_distances(WAKE_RANGE_M)])
+        for spread in RAY_SPREAD_DEG:
+            bearing = math.radians(sector * SECTOR_DEG + spread)
+            dx, dy = math.sin(bearing) / FINE_M, math.cos(bearing) / FINE_M  # towards where the wind comes from
+            deficit = np.zeros(rows.shape)
+            for distance in distances:
+                row = np.clip(np.round(r0 - dy * distance).astype(int), 0, n_rows - 1)
+                col = np.clip(np.round(c0 + dx * distance).astype(int), 0, n_cols - 1)
+                hit = obstacle[row, col]
+                if not hit.any():
+                    continue
+                h = height[row, col]
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    d = np.where(hit, self.d_max * strength[row, col] * np.exp(-distance / (self.wake_e_fold * h)), 0.0)
+                np.maximum(deficit, d, out=deficit)
+            total += 1.0 - deficit
+        out = np.full(valid.shape, np.nan)
+        out[rows, cols] = total / len(RAY_SPREAD_DEG)
+        return out
+
+    # -- lookup ---------------------------------------------------------------
+
+    def _shelter(self, sector: int, leaf_on: bool) -> np.ndarray:
+        key = (sector, leaf_on)
+        with self._lock:
+            cached = self._cache.get(key)
+        if cached is None:
+            cached = self.shelter(sector, leaf_on)
+            with self._lock:
+                self._cache[key] = cached
+        return cached
+
+    def shelter_factor(self, sector: int, leaf_on: bool) -> np.ndarray:
+        """K_BG × S alone (no flow round the buildings), clipped to [K_MIN, 1]."""
+        k = np.clip(self.k_bg * self._shelter(sector, leaf_on), K_MIN, 1.0)
+        return np.where(self.obstacles.valid, k, np.nan)
+
+    def factor(self, direction_deg: float | None, leaf_on: bool) -> np.ndarray:
+        """K = K_BG × S per output cell; for calm (None) the mean over the 16 sectors."""
+        sector = sector_of(direction_deg)
+        if sector is None:
+            return np.mean([self.shelter_factor(s, leaf_on) for s in range(SECTORS)], axis=0)
+        return self.shelter_factor(sector, leaf_on)
+
+    def precompute(self) -> None:
+        for leaf_on in (True, False):
+            for sector in range(SECTORS):
+                self._shelter(sector, leaf_on)
+
+    def wind_ms(self, speed_ms: float, direction_deg: float | None, day: date) -> np.ndarray:
+        """Per-cell 10 m-equivalent wind; cells outside the valid area keep the ASOS value."""
+        calm = sector_of(direction_deg, speed_ms) is None
+        k = self.factor(None if calm else direction_deg, in_leaf(day))
+        return speed_ms * np.where(np.isfinite(k), k, 1.0)
