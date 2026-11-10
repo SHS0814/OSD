@@ -9,8 +9,10 @@ import pytest
 from app.services.wind import (
     K_BG,
     STATION_Z0_M,
+    MassConsistentSolver,
     WindField,
     background_factor,
+    from_direction,
     macdonald,
     sector_of,
 )
@@ -99,3 +101,62 @@ def test_frontal_area_depends_on_the_wind_direction() -> None:
     wall = tuple((x, 0.0, 4.0, 10.0) for x in range(-56, 57, 8))
     field = WindField(square_obstacles(buildings=wall))
     assert field.morphometry(NORTH, True)["frontal_index"] > 5 * field.morphometry(EAST, True)["frontal_index"]
+
+
+# -- the 2D mass-consistent flow -------------------------------------------------
+
+
+def _block_flow(solid: np.ndarray):
+    flow = MassConsistentSolver(solid).solve(1.0, 0.0)  # west wind, unit speed
+    u, v = flow.cell_velocity()
+    return flow, u, v
+
+
+def test_flow_round_a_block_has_no_divergence_and_no_flow_inside() -> None:
+    solid = np.zeros((60, 80), dtype=bool)
+    solid[25:35, 30:40] = True  # rows run south, columns east
+    flow, u, v = _block_flow(solid)
+    assert np.abs(flow.divergence()).max() < 1e-9
+    assert np.abs(flow.east[:, 30:41][25:35]).max() == 0.0  # no flow through or inside the block
+    assert np.abs(flow.south[25:36, 30:40]).max() == 0.0
+    assert np.hypot(u, v)[solid].max() == 0.0
+    # Far to the side of the block the wind is the initial one.
+    assert u[2, 35] == pytest.approx(1.0, abs=0.03) and abs(v[2, 35]) < 0.03
+
+
+def test_flow_turns_round_a_block_and_speeds_up_beside_it() -> None:
+    solid = np.zeros((60, 80), dtype=bool)
+    solid[25:35, 30:40] = True
+    _, u, v = _block_flow(solid)
+    speed = np.hypot(u, v)
+    bearing = from_direction(u, v)
+    # In front of the west wall the wind slows and turns: north of the
+    # centre line it goes round the north side (from the south-west), south
+    # of it round the south side (from the north-west).
+    assert speed[30, 29] < 0.5
+    assert bearing[26, 28] < 270 - 15
+    assert bearing[33, 28] > 270 + 15
+    # Beside the block it speeds up and blows along the wall again.
+    assert speed[24, 35] > 1.2
+    assert bearing[24, 35] == pytest.approx(270, abs=3)
+
+
+def test_flow_speeds_up_through_a_passage() -> None:
+    solid = np.zeros((60, 80), dtype=bool)
+    solid[10:28, 30:40] = True
+    solid[32:50, 30:40] = True  # a 4-cell passage running east-west
+    _, u, v = _block_flow(solid)
+    speed = np.hypot(u, v)
+    assert speed[28:32, 35].min() > 1.5
+    assert speed[28:32, 35].min() > speed[30, 5] * 1.5
+    assert np.abs(v[28:32, 35]).max() < 0.05  # straight along the passage
+
+
+def test_a_walled_in_courtyard_has_no_2d_flow() -> None:
+    solid = np.zeros((40, 40), dtype=bool)
+    solid[10:30, 10:30] = True
+    solid[15:25, 15:25] = False  # courtyard
+    solver = MassConsistentSolver(solid)
+    assert solver.walled_in.sum() == 100
+    u, v = solver.solve(1.0, 0.0).cell_velocity()
+    assert np.hypot(u, v)[15:25, 15:25].max() == 0.0

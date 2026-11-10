@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import math
 import threading
+from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
 from scipy import ndimage
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import splu
 
 from .common import in_leaf
 from .contracts import ObstacleRaster
@@ -88,6 +91,107 @@ def background_factor(z0_m: float = CAMPUS_Z0_M, d_m: float = 0.0) -> float:
 
 
 K_BG = background_factor()
+
+
+@dataclass(frozen=True)
+class FaceFlow:
+    """A mass-consistent field on a staggered grid (array axes: rows run south).
+
+    ``east`` [rows, cols + 1] is the flow through the west/east faces of each
+    cell, positive eastwards; ``south`` [rows + 1, cols] through the north/south
+    faces, positive southwards. ``walled_in`` marks open cells with no path
+    to the domain edge, where the 2D problem has no flow."""
+
+    east: np.ndarray
+    south: np.ndarray
+    walled_in: np.ndarray
+
+    def divergence(self) -> np.ndarray:
+        return self.east[:, 1:] - self.east[:, :-1] + self.south[1:, :] - self.south[:-1, :]
+
+    def cell_velocity(self) -> tuple[np.ndarray, np.ndarray]:
+        """(u east, v north) at cell centres, the mean of opposite faces."""
+        u = 0.5 * (self.east[:, :-1] + self.east[:, 1:])
+        v = -0.5 * (self.south[:-1, :] + self.south[1:, :])
+        return u, v
+
+
+class MassConsistentSolver:
+    """Sherman (1978) in 2D: u = u0 + ∇φ with ∇²φ = −∇·u0, no flux through
+    ``solid`` cells and φ = 0 just outside the array (flow-through edge).
+
+    Cells are of unit size (φ is in units of the cell, which only scales φ).
+    The matrix does not depend on u0, so it is factorised once."""
+
+    def __init__(self, solid: np.ndarray):
+        self.solid = np.asarray(solid, dtype=bool)
+        labels, _ = ndimage.label(~self.solid)  # 4-connected open regions
+        edge = np.unique(np.concatenate([labels[0], labels[-1], labels[:, 0], labels[:, -1]]))
+        reaches_edge = np.isin(labels, edge[edge > 0])
+        self.active = reaches_edge & ~self.solid
+        self.walled_in = ~self.solid & ~reaches_edge
+        index = np.full(self.solid.shape, -1)
+        index[self.active] = np.arange(int(self.active.sum()))
+        self.index = index
+        n = int(self.active.sum())
+        diagonal = np.zeros(n)
+        pairs_i, pairs_j = [], []
+        # Each open face of an active cell adds −1 on the diagonal; one shared
+        # with another active cell adds +1 off it. Walls add nothing (∂φ/∂n = 0),
+        # the domain edge only the −1 (φ = 0 outside).
+        for a, b, ia, ib in (
+            (self.active[:-1, :], self.active[1:, :], index[:-1, :], index[1:, :]),
+            (self.active[:, :-1], self.active[:, 1:], index[:, :-1], index[:, 1:]),
+        ):
+            both = a & b
+            pairs_i.append(ia[both])
+            pairs_j.append(ib[both])
+            np.add.at(diagonal, ia[both], -1.0)
+            np.add.at(diagonal, ib[both], -1.0)
+        for border in (index[0, :], index[-1, :], index[:, 0], index[:, -1]):
+            np.add.at(diagonal, border[border >= 0], -1.0)
+        pi, pj = np.concatenate(pairs_i), np.concatenate(pairs_j)
+        matrix = coo_matrix(
+            (
+                np.concatenate([-diagonal, -np.ones(pi.size), -np.ones(pi.size)]),
+                (np.concatenate([np.arange(n), pi, pj]), np.concatenate([np.arange(n), pj, pi])),
+            ),
+            shape=(n, n),
+        ).tocsc()
+        self._lu = splu(matrix) if n else None  # −∇², symmetric positive definite
+
+    def solve(self, u0_east: float, v0_north: float) -> FaceFlow:
+        rows, cols = self.solid.shape
+        active, index = self.active, self.index
+        w0 = -v0_north  # southward component, along the rows
+        # Initial face flows: u0 through every face between two active cells or
+        # an active cell and the edge; 0 at walls.
+        open_east = np.zeros((rows, cols + 1), dtype=bool)
+        open_east[:, 1:-1] = active[:, :-1] & active[:, 1:]
+        open_east[:, 0], open_east[:, -1] = active[:, 0], active[:, -1]
+        open_south = np.zeros((rows + 1, cols), dtype=bool)
+        open_south[1:-1, :] = active[:-1, :] & active[1:, :]
+        open_south[0, :], open_south[-1, :] = active[0, :], active[-1, :]
+        east0 = np.where(open_east, u0_east, 0.0)
+        south0 = np.where(open_south, w0, 0.0)
+        if self._lu is None:
+            return FaceFlow(east0, south0, self.walled_in)
+        div0 = (east0[:, 1:] - east0[:, :-1] + south0[1:, :] - south0[:-1, :])[active]
+        # Σ_open faces (φ_nb − φ_i) = −div0, i.e. (−∇²) φ = div0.
+        phi_active = self._lu.solve(div0)
+        phi = np.zeros((rows + 2, cols + 2))  # with the φ = 0 ring outside
+        inner = np.zeros((rows, cols))
+        inner[active] = phi_active[index[active]]
+        phi[1:-1, 1:-1] = inner
+        east = east0 + np.where(open_east, phi[1:-1, 1:] - phi[1:-1, :-1], 0.0)
+        south = south0 + np.where(open_south, phi[1:, 1:-1] - phi[:-1, 1:-1], 0.0)
+        return FaceFlow(east, south, self.walled_in)
+
+
+def from_direction(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """Compass bearing the wind blows from (north 360, as ASOS) of (u east, v north)."""
+    bearing = np.degrees(np.arctan2(-u, -v)) % 360.0
+    return np.where(bearing < 0.05, 360.0, bearing)
 
 
 class WindField:
