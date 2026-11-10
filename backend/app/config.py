@@ -34,6 +34,8 @@ class Settings:
     # Build all 32 (sector, season) shelter maps and the flow (~0.6 s of it) at
     # start-up (~12-19 s) instead of each on its first request (~0.6 s). Tests turn it off.
     wind_field_precompute: bool = os.getenv("WIND_FIELD_PRECOMPUTE", "1").lower() not in ("0", "false", "no")
+    # Salt for the hashed visitor id in the access log; random per start-up when unset.
+    visitor_hash_salt: str | None = os.getenv("VISITOR_HASH_SALT") or None
     weather_refresh_seconds: int = int(os.getenv("WEATHER_REFRESH_SECONDS", "300"))
     timezone: str = "Asia/Seoul"
     projected_crs: str = "EPSG:5179"

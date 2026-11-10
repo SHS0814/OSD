@@ -441,6 +441,7 @@ Compose는 `.env`(`.env.example` 참고)에서 `POSTGRES_*`, `DATABASE_URL`, `AP
 | `VWORLD_DOMAIN` | VWorld 키 등록 도메인, 기본값 `http://localhost` |
 | `DATA_GO_KR_API_KEY` | `scripts/fetch_building_ledger.py`, `scripts/fetch_kma_asos.py`용 공공데이터포털 키(Decoding); 커밋 금지 |
 | `CLOUDFLARE_TUNNEL_TOKEN` | 선택적 Tunnel token; 커밋 금지 |
+| `VISITOR_HASH_SALT` | 접속 기록의 방문자 id를 만드는 salt. 비우면 재시작마다 새로 뽑혀 id가 바뀜; 커밋 금지 |
 
 Android 앱의 API 주소 `API_BASE_URL`은 환경 변수가 아니라 Gradle 속성입니다(위 "Android 실행").
 
@@ -453,6 +454,16 @@ docker compose --env-file .env -f infra/docker-compose.yml --profile tunnel up -
 ```
 
 토큰이 없는 기본 실행에서는 cloudflared profile이 시작되지 않습니다.
+
+### 접속 기록
+
+uvicorn 기본 access log는 끄고(`--no-access-log`), `backend/app/access_log.py`가 요청마다 JSON 한 줄을 남깁니다. IP는 기록하지 않고 `CF-Connecting-IP`에 `VISITOR_HASH_SALT`를 붙인 해시 앞 12자리(`visitor`)만 남기며, 쿼리의 위도·경도는 소수점 3자리(약 100 m)로 줄입니다. `/health`는 남기지 않습니다. Docker 로그는 10 MB × 3개까지만 보관합니다.
+
+```json
+{"t": "2026-11-10T22:10:45+09:00", "visitor": "3f9a1c0e7b2d", "method": "GET", "path": "/api/route", "query": {"from_lat": "36.626", "from_lon": "127.460", "to_lat": "36.628", "to_lon": "127.458", "datetime": "2026-11-10T11:54:00+09:00"}, "status": 200, "ms": 412, "ua": "okhttp/4.12.0"}
+```
+
+방문자 수는 `docker logs osd-api-1 | jq -r .visitor | sort -u | wc -l`처럼 셉니다. 컨테이너를 새로 만들면(재배포) 이전 로그는 사라집니다.
 
 ## 테스트
 
