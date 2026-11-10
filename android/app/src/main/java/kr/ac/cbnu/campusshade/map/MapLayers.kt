@@ -16,4 +16,6 @@ class MapLayers(style: Style, context: Context) {
     val shadows = ShadowLayer(style)
     val buildings = BuildingLayer(style)
     val heatmap = HeatmapLayer(style)
+    val routes = RouteLayer(style)
+    val sensors = SensorLayer(style)
 }
