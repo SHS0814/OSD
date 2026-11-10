@@ -30,6 +30,9 @@ services:
       TERRAIN_DATA_PATH: /data/cbnu_dtm_5m.npz
       LANDCOVER_DATA_PATH: /data/cbnu_landcover.geojson
       STREET_TREES_DATA_PATH: /data/cbnu_street_trees.geojson
+      TREE_CANOPY_DATA_PATH: /data/cbnu_tree_canopy.geojson
+      WALK_NETWORK_DATA_PATH: /data/cbnu_walk_network.geojson
+      SENSORS_DATA_PATH: /data/cbnu_sensors.geojson
       KMA_APIHUB_KEY: ${KMA_APIHUB_KEY:-}
       VWORLD_API_KEY: ${VWORLD_API_KEY:-}
       VWORLD_DOMAIN: ${VWORLD_DOMAIN:-http://localhost}

@@ -18,6 +18,9 @@ class Settings:
     terrain_data_path: Path = _data_path("TERRAIN_DATA_PATH", "cbnu_dtm_5m.npz")
     landcover_data_path: Path = _data_path("LANDCOVER_DATA_PATH", "cbnu_landcover.geojson")
     street_trees_data_path: Path = _data_path("STREET_TREES_DATA_PATH", "cbnu_street_trees.geojson")
+    tree_canopy_data_path: Path = _data_path("TREE_CANOPY_DATA_PATH", "cbnu_tree_canopy.geojson")
+    walk_network_data_path: Path = _data_path("WALK_NETWORK_DATA_PATH", "cbnu_walk_network.geojson")
+    sensors_data_path: Path = _data_path("SENSORS_DATA_PATH", "cbnu_sensors.geojson")
     # 기상청 API허브 key; without it the weather stays at the committed snapshot.
     kma_apihub_key: str | None = os.getenv("KMA_APIHUB_KEY") or None
     # VWorld key for the satellite base map; without it only cached tiles are served.
