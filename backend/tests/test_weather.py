@@ -78,3 +78,14 @@ def test_latest_observation_is_carried_forward() -> None:
 
 def test_clearness_from_cloud_is_lower_under_overcast() -> None:
     assert clearness_from_cloud(0.0) > clearness_from_cloud(0.5) > clearness_from_cloud(1.0) > 0
+
+
+def test_a_missing_value_in_the_latest_hour_falls_back_to_the_hour_before() -> None:
+    store = fresh_store()
+    latest = store.latest
+    previous_cloud = store._row(latest)["cloud"]
+    gap = dict(store._row(latest), cloud=None)
+    store.extend([(latest + HOUR, gap)])
+    sample = store.at(latest + HOUR + timedelta(minutes=20))
+    assert sample.persisted
+    assert sample.cloud_fraction == pytest.approx(previous_cloud / 10)
