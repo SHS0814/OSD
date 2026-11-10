@@ -18,5 +18,11 @@
     <string name="network_error">서버 연결 실패: %1$s</string>
     <string name="http_error">서버 오류: HTTP %1$d</string>
 
+    <!-- 지도 설정 -->
+    <string name="map_settings">지도 설정</string>
+    <string name="map_settings_view">보기</string>
+    <string name="view_3d">3D</string>
+    <string name="view_2d">2D</string>
+
     <string name="attribution">© OpenStreetMap contributors · OpenFreeMap · OpenMapTiles</string>
 </resources>
