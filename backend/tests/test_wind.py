@@ -8,6 +8,7 @@ import pytest
 
 from app.services.wind import (
     K_BG,
+    SPEEDUP_MAX,
     STATION_Z0_M,
     MassConsistentSolver,
     WindField,
@@ -45,6 +46,20 @@ def test_macdonald_gives_more_roughness_for_more_frontal_area() -> None:
     assert d_low == pytest.approx(d_high)  # d depends on λp only
     assert z0_high > z0_low
     assert macdonald(0.0, 0.0, 0.0) == (0.0, STATION_Z0_M)
+
+
+def test_the_field_needs_only_an_obstacle_raster() -> None:
+    # A stand-in raster (no ray tracer, no campus data): one 10 m tall,
+    # 20 m wide building; a west wind leaves its wake to the east.
+    raster = square_obstacles(buildings=[(0, 0, 10, 10.0)])
+    field = WindField(raster)
+    k = field.shelter_factor(WEST, leaf_on=True)
+    assert k[cell_of(raster, -40, 0)] == pytest.approx(K_BG)
+    assert k[cell_of(raster, 14, 0)] < k[cell_of(raster, 60, 0)] < K_BG
+    k, bearing = field.wind(270.0, leaf_on=True)
+    assert not np.isfinite(k[cell_of(raster, 0, 0)])  # building cells are not valid
+    assert np.nanmax(k) > K_BG  # sped up beside the building
+    assert np.nanmedian(bearing) == pytest.approx(270, abs=1)
 
 
 def test_open_ground_is_unsheltered() -> None:
@@ -101,6 +116,20 @@ def test_frontal_area_depends_on_the_wind_direction() -> None:
     wall = tuple((x, 0.0, 4.0, 10.0) for x in range(-56, 57, 8))
     field = WindField(square_obstacles(buildings=wall))
     assert field.morphometry(NORTH, True)["frontal_index"] > 5 * field.morphometry(EAST, True)["frontal_index"]
+
+
+def test_field_combines_flow_and_shelter_without_counting_the_lee_twice() -> None:
+    raster = square_obstacles(buildings=[(0, 0, 10, 10.0)])
+    field = WindField(raster)
+    k, _ = field.wind(270.0, leaf_on=True)
+    shelter = field.shelter_factor(WEST, leaf_on=True)
+    u, v, _ = field.flow(270.0)
+    m = np.hypot(u, v) / K_BG
+    lee = cell_of(raster, 14, 0)
+    assert k[lee] == pytest.approx(K_BG * min(m[lee], shelter[lee] / K_BG), rel=1e-6)
+    front = cell_of(raster, -14, 0)
+    assert shelter[front] == pytest.approx(K_BG)
+    assert k[front] < 0.8 * K_BG
 
 
 # -- the 2D mass-consistent flow -------------------------------------------------

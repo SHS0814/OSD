@@ -1,21 +1,84 @@
-"""Per-cell wind K(x, y; wind direction) - shelter behind buildings and crowns.
+"""Per-cell wind K(x, y; wind direction) and its direction - shelter plus a 2D mass-consistent flow.
 
 UTCI needs a wind speed, and so far the 청주 ASOS 10 m wind was used for every
 cell. Here each cell gets
 
-    wind = ASOS ws × K,   K = K_BG × S(x, y; sector, season)
+    wind = ASOS ws × K,   K = K_BG × S(x, y; sector, season) × flow correction M
 
-K_BG brings the open-site ASOS wind to the rougher campus with the log law
-(Wieringa 1986, 1992). S is what is left behind obstacles upwind: every
-obstacle of height H met at distance x leaves a wake deficit
+S is computed for the 16 compass sectors and both leaf seasons, and M is
+solved once for two directions, so a request only looks maps up and combines
+them. Three textbook pieces, explainable without CFD:
 
-    D = D_MAX × b × exp(−x / (WAKE_E_FOLD × H))
+1. **K_BG - from the open ASOS site to campus.** The ASOS mast stands on open
+   ground (WMO: z0 ≈ 0.03 m). The wind reaching campus has crossed suburban
+   청주 and the campus itself, "very rough" terrain in the Davenport-Wieringa
+   classification (z0 ≈ 0.5 m; Wieringa 1992). Taking the wind as equal at a
+   blending height of 60 m above both (Wieringa 1986) and bringing it down
+   with the log law to 10 m:
 
-with b = 1 for a building and 1 − τ for a crown (τ its transmissivity for
-sunlight; Heisler & DeWalle 1988), S = 1 − max D over three rays across the
-22.5° sector (Hosker 1984; Cleugh 1998). The space side hands the buildings
-and crowns over as an ObstacleRaster (contracts.py). The flow round the
-buildings is still to come.
+       K_BG = [ln(10/z0) / ln(60/z0)] / [ln(10/z0s) / ln(60/z0s)] ≈ 0.82
+
+   This is the same everywhere; it matters only through UTCI's nonlinearity
+   and its 0.5 m/s floor. ``morphometry`` gives the plan and frontal area
+   indices and Macdonald et al. (1998) z0 and d of campus for comparison;
+   they are not used because with trees counted d approaches 10 m, where the
+   log law no longer holds, and obstacles are already counted by S.
+
+2. **S - shelter behind obstacles.** Walking upwind from a cell, every
+   obstacle of height H met at distance x leaves a wake deficit
+
+       D = D_MAX × b × exp(−x / (WAKE_E_FOLD × H))
+
+   b is 1 for a building and 1 − τ for a crown, τ being the crown's
+   transmissivity already used for sunlight (optical porosity stands in for
+   aerodynamic porosity, Heisler & DeWalle 1988). The strongest deficit
+   counts, S = 1 − max D, averaged over three rays across the 22.5° sector.
+   D_MAX and WAKE_E_FOLD follow the windbreak and building-wake literature:
+   ~0.3 u₀ just behind a solid obstacle, ~85 % recovered by 10 H and nearly
+   all by 20 H (Hosker 1984; Heisler & DeWalle 1988; Cleugh 1998). A cell
+   under a crown starts in its own shelter (x = 0).
+
+3. **M - flow around buildings, a 2D mass-consistent field** (Sherman 1978,
+   the diagnostic step of MATHEW/QUIC-URB). The initial field is the ASOS
+   wind, uniform, × K_BG. Building cells (≥ half covered, the same cells
+   ``valid`` of the obstacle raster drops) are solid. The field closest to the initial one
+   (least squares) that has zero 2D divergence and no flow through a wall is
+   u = u0 + ∇φ, with the Lagrange multiplier φ from
+
+       ∇²φ = −∇·u0,   ∂φ/∂n = 0 on walls,   φ = 0 on the open domain edge
+
+   solved on a staggered (MAC) grid of output cells with one sparse LU
+   factorisation. φ = 0 on every outer edge is Sherman's flow-through
+   condition for inflow and outflow alike; the edge lies PAD_M + MARGIN_M
+   beyond the campus with no building in between, so it barely constrains the
+   flow among the buildings. The problem is linear in u0 and its boundary
+   conditions do not depend on the wind direction, so two solves (a unit
+   east and a unit north initial wind) give the field for any direction.
+   This gives what S lacks: flow turning round a building, the slow-down in
+   front of a wall, and the speed-up through passages and round corners.
+   Open cells walled in on every side (courtyards at 4 m) get no 2D flow at
+   all; they keep the S estimate and the ASOS direction.
+
+Combining them. S and M both describe sheltering by the same buildings: M
+has the slow-down next to the walls but, being a potential flow, no wake; S
+has the wake. Multiplying their deficits would count the lee of a wall
+twice, so - as within S, where the strongest deficit counts - the deficit is
+the stronger of the two, and M's speed-up (which S knows nothing of)
+multiplies:
+
+    K = K_BG × min(m, S) × max(m, 1),   m = |M| / K_BG
+
+S here is the whole shelter (buildings and crowns: crowns are porous, not
+solid in M). The direction at a cell is M's direction.
+
+Not modelled (and not verifiable without an anemometer): flow over the
+roofs, the recirculation (reversed flow) in a wake, terrain sheltering and
+gusts. The field is 2D, so a passage can only be squeezed sideways and the
+speed-up m is capped at SPEEDUP_MAX; K is clipped to [K_MIN, K_BG × SPEEDUP_MAX].
+
+UTCI takes the 10 m wind and reduces it to 1.1 m internally with an
+open-terrain profile; scaling that input by K is the same as scaling the
+pedestrian-level wind by K.
 """
 
 from __future__ import annotations
@@ -59,6 +122,14 @@ MIN_OBSTACLE_M = 1.5
 # unknown height certainly blocks, so it is given about three storeys.
 DEFAULT_BUILDING_HEIGHT_M = 12.0
 K_MIN = 0.05
+# Open ground added round the fine raster's PAD_M for the flow solve, so the
+# φ = 0 edge is ≥ 200 m from any campus building.
+MARGIN_M = 100.0
+# Pedestrian-level amplification in passages and at corners stays below ~2 in
+# wind-tunnel and CFD studies (e.g. Blocken et al. 2007, passages between
+# parallel buildings); a 2D potential-type flow squeezed through a one-cell
+# gap has no such bound, hence the cap.
+SPEEDUP_MAX = 2.0
 
 
 def sector_of(direction_deg: float | None, speed_ms: float | None = None) -> int | None:
@@ -219,6 +290,8 @@ class WindField:
         self.campus_fine = self._campus_mask()  # over the raster's window
         self._cache: dict[tuple[int, bool], np.ndarray] = {}  # S per (sector, leaf_on)
         self._lock = threading.Lock()
+        self._basis = None  # flow_basis()
+        self._flow_lock = threading.Lock()
 
     # -- geometry ---------------------------------------------------------------
 
@@ -297,6 +370,43 @@ class WindField:
         out[rows, cols] = total / len(RAY_SPREAD_DEG)
         return out
 
+    # -- flow round the buildings -----------------------------------------------
+
+    def _solve_grid(self) -> tuple[np.ndarray, int]:
+        """Solid output-size cells over the fine raster plus MARGIN_M of open
+        ground, and the row/column offset of the output grid in it."""
+        footprint = self.obstacles.footprint
+        rows, cols = footprint.shape
+        share = footprint.reshape(rows // SUBCELLS, SUBCELLS, cols // SUBCELLS, SUBCELLS).mean(axis=(1, 3))
+        # The same rule that takes a cell out of ``valid``: every valid cell is open.
+        solid = share >= MAX_BUILDING_SHARE
+        margin = round(MARGIN_M / CELL_M)
+        return np.pad(solid, margin, constant_values=False), PAD // SUBCELLS + margin
+
+    def flow_basis(self) -> tuple[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray], np.ndarray]:
+        """Cell (u, v) for a unit initial wind blowing east and one blowing
+        north (before K_BG), and the walled-in cells, over the output grid."""
+        with self._flow_lock:
+            if self._basis is None:
+                solid, offset = self._solve_grid()
+                solver = MassConsistentSolver(solid)
+                rows, cols = self.obstacles.valid.shape
+                window = (slice(offset, offset + rows), slice(offset, offset + cols))
+                east = tuple(c[window] for c in solver.solve(1.0, 0.0).cell_velocity())
+                north = tuple(c[window] for c in solver.solve(0.0, 1.0).cell_velocity())
+                self._basis = (east, north, solver.walled_in[window])
+        return self._basis
+
+    def flow(self, direction_deg: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """(u east, v north) per output cell relative to the ASOS speed (K_BG
+        included) for a wind from ``direction_deg``, and the walled-in cells."""
+        east, north, walled_in = self.flow_basis()
+        bearing = math.radians(direction_deg)
+        a, b = -math.sin(bearing), -math.cos(bearing)  # where the wind blows to
+        u = self.k_bg * (a * east[0] + b * north[0])
+        v = self.k_bg * (a * east[1] + b * north[1])
+        return u, v, walled_in
+
     # -- lookup ---------------------------------------------------------------
 
     def _shelter(self, sector: int, leaf_on: bool) -> np.ndarray:
@@ -314,14 +424,31 @@ class WindField:
         k = np.clip(self.k_bg * self._shelter(sector, leaf_on), K_MIN, 1.0)
         return np.where(self.obstacles.valid, k, np.nan)
 
-    def factor(self, direction_deg: float | None, leaf_on: bool) -> np.ndarray:
-        """K = K_BG × S per output cell; for calm (None) the mean over the 16 sectors."""
+    def wind(self, direction_deg: float | None, leaf_on: bool) -> tuple[np.ndarray, np.ndarray]:
+        """K and the 'from' bearing per output cell (NaN where not valid).
+
+        ``direction_deg`` None (calm) gives the mean K over the 16 sectors and no bearing."""
         sector = sector_of(direction_deg)
         if sector is None:
-            return np.mean([self.shelter_factor(s, leaf_on) for s in range(SECTORS)], axis=0)
-        return self.shelter_factor(sector, leaf_on)
+            k = np.mean([self.wind(s * SECTOR_DEG or 360.0, leaf_on)[0] for s in range(SECTORS)], axis=0)
+            return k, np.full(k.shape, np.nan)
+        shelter = self._shelter(sector, leaf_on)
+        u, v, walled_in = self.flow(direction_deg)
+        m = np.minimum(np.hypot(u, v) / self.k_bg, SPEEDUP_MAX)
+        k = self.k_bg * np.minimum(m, shelter) * np.maximum(m, 1.0)
+        # No 2D flow reaches a walled-in cell; keep the shelter estimate there.
+        k = np.where(walled_in, self.k_bg * shelter, k)
+        k = np.clip(k, K_MIN, self.k_bg * SPEEDUP_MAX)
+        bearing = np.where(walled_in, float(direction_deg), from_direction(u, v))
+        valid = self.obstacles.valid
+        return np.where(valid, k, np.nan), np.where(valid, bearing, np.nan)
+
+    def factor(self, direction_deg: float | None, leaf_on: bool) -> np.ndarray:
+        """K per output cell; for calm (None) the mean over the 16 sectors."""
+        return self.wind(direction_deg, leaf_on)[0]
 
     def precompute(self) -> None:
+        self.flow_basis()
         for leaf_on in (True, False):
             for sector in range(SECTORS):
                 self._shelter(sector, leaf_on)
