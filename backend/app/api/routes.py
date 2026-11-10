@@ -61,8 +61,9 @@ def walking_route(
     """Shortest, balanced and coolest walking routes for one instant.
 
     Balanced and coolest are left out when they coincide with a route already
-    given, when no part of the way is hotter than the shade, and at night,
-    when sun and shade make no difference.
+    given, when the weather is comfortable everywhere, and at night, when sun
+    and shade make no difference. ``mode`` says what the alternatives seek:
+    "heat" - shade (그늘길), "cold" - sun (햇볕길), "none" - only the shortest.
     """
     network = request.app.state.walk_network
     if network is None:
@@ -84,7 +85,10 @@ def walking_route(
     try:
         start, end = network.snap(from_lon, from_lat), network.snap(to_lon, to_lat)
         heat_base = float(np.nanpercentile(fields.utci, routing.SHADE_PERCENTILE))
-        found = network.routes(start, end, utci, heat_base=heat_base, daylight=solar.altitude > 0)
+        cold_base = float(np.nanpercentile(fields.utci, routing.SUN_PERCENTILE))
+        found = network.routes(
+            start, end, utci, heat_base=heat_base, cold_base=cold_base, daylight=solar.altitude > 0
+        )
     except routing.RouteUnavailable as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     shortest_m = float(network.length[found[0].edges].sum())
@@ -93,9 +97,11 @@ def walking_route(
         "timezone": "Asia/Seoul",
         "solar": _solar_payload(solar),
         "air_temp_c": round(weather.air_temp_c, 1),
+        "mode": found[0].mode,
         "routes": feature_collection([network.describe(route, utci, sunlit, shortest_m) for route in found]),
-        "note": "보행 속도 1.2 m/s 기준. coolest는 최단 경로보다 최대 30%, "
-        "balanced는 15%까지 길어질 수 있습니다.",
+        "note": "보행 속도 1.2 m/s 기준. mode가 heat이면 그늘길, cold이면 햇볕길이며, "
+        "coolest는 최단 경로보다 최대 30%, balanced는 15%까지 길어질 수 있습니다. "
+        "none이면 쾌적하거나 밤이라 최단 경로만 줍니다.",
     }
 
 

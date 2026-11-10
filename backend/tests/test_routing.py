@@ -87,3 +87,42 @@ def test_far_points_and_same_place_are_refused(tmp_path) -> None:
     start = net.snap(*lonlat(0, 0))
     with pytest.raises(routing.RouteUnavailable):
         net.routes(start, start, np.zeros(len(net.length)), heat_base=20.0, daylight=True)
+
+
+def test_cold_street_sends_the_sun_route_through_the_sunny_detour(tmp_path) -> None:
+    net = network(tmp_path, 10)
+    # Winter noon: the street is in the shade of a wall, the detour in the sun.
+    utci = street_is_sunny(net, sun=-4.0, shade=4.0)
+    found = net.routes(*ends(net), utci, heat_base=-4.0, cold_base=4.0, daylight=True)
+    assert [route.kind for route in found] == ["shortest", "coolest"]
+    assert {route.mode for route in found} == {"cold"}
+    assert net.length[found[1].edges].sum() == pytest.approx(120, abs=0.5)
+    props = net.describe(found[0], utci, street_is_sunny(net, 0.0, 1.0), shortest_m=100)["properties"]
+    assert props["mode"] == "cold"
+    assert props["cold_minutes"] == pytest.approx(100 / routing.WALK_SPEED_MS / 60, abs=0.05)
+
+
+def test_cold_baseline_is_the_sunny_side_not_the_comfort_limit(tmp_path) -> None:
+    net = network(tmp_path, 10)
+    # Midwinter: even the sun is below 9 °C. Against 9 °C both ways are cold;
+    # against the sunny side only the shaded street is penalised.
+    utci = street_is_sunny(net, sun=-10.0, shade=-3.0)
+    penalty, mode = routing.comfort_penalty(utci, heat_base=-10.0, cold_base=-3.0)
+    assert mode == "cold"
+    on_street = np.abs(net.mid[:, 1] - ORIGIN[1]) < 0.5
+    assert np.all(penalty[~on_street] == 0) and np.all(penalty[on_street] > 0)
+    # A warm sunny side is capped at the comfort limit.
+    _, mode = routing.comfort_penalty(np.array([12.0, 15.0]), heat_base=12.0, cold_base=15.0)
+    assert mode == "none"
+
+
+def test_modes_for_heat_and_comfort(tmp_path) -> None:
+    net = network(tmp_path, 10)
+    hot = street_is_sunny(net, sun=44.0, shade=38.0)
+    assert {r.mode for r in net.routes(*ends(net), hot, heat_base=38.0, cold_base=44.0, daylight=True)} == {"heat"}
+    mild = street_is_sunny(net, sun=20.0, shade=14.0)
+    found = net.routes(*ends(net), mild, heat_base=14.0, cold_base=20.0, daylight=True)
+    assert [(r.kind, r.mode) for r in found] == [("shortest", "none")]
+    cold = street_is_sunny(net, sun=-4.0, shade=4.0)
+    night = net.routes(*ends(net), cold, heat_base=-4.0, cold_base=4.0, daylight=False)
+    assert [(r.kind, r.mode) for r in night] == [("shortest", "none")]
