@@ -1,5 +1,6 @@
 """The space side (terrain, surfaces, GeometryField) on small synthetic scenes, where the answer is known."""
 
+from dataclasses import dataclass
 from datetime import date
 import json
 
@@ -8,6 +9,8 @@ import pytest
 from shapely.geometry import Polygon, box
 
 from app.services.geometry import to_projected, to_wgs84
+from app.services.geometry_field import GeometryField
+from app.services.grid import CELL_M
 from app.services.surfaces import Canopy, CanopyPatch, in_leaf, load_street_trees
 from app.services.terrain import Terrain
 
@@ -17,9 +20,29 @@ CENTRE = to_projected(box(127.4566, 36.6281, 127.4568, 36.6283)).centroid
 TREE = Canopy(height_m=12.0, transmissivity_leaf_on=0.2, transmissivity_leaf_off=0.6)
 
 
+@dataclass
+class Block:
+    geometry: object  # WGS84
+    height_m: float | None
+
+
 def square(x: float, y: float, half: float) -> Polygon:
     """Projected square centred ``(x, y)`` metres from the scene centre."""
     return box(CENTRE.x + x - half, CENTRE.y + y - half, CENTRE.x + x + half, CENTRE.y + y + half)
+
+
+def scene(buildings=(), canopies=()) -> GeometryField:
+    return GeometryField(
+        to_wgs84(square(0, 0, 150)),
+        [Block(to_wgs84(geometry), height) for geometry, height in buildings],
+        canopies=[CanopyPatch(geometry, TREE) for geometry in canopies],
+    )
+
+
+def cell_at(model, x: float, y: float) -> tuple[int, int]:
+    col = int((CENTRE.x + x - model.grid.origin_x) / CELL_M)
+    row = int((model.grid.origin_y - (CENTRE.y + y)) / CELL_M)
+    return row, col
 
 
 def test_terrain_samples_bilinearly(tmp_path) -> None:

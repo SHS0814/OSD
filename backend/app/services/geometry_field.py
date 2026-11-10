@@ -28,6 +28,14 @@ from shapely.geometry.base import BaseGeometry
 
 from .geometry import to_projected
 from .grid import CELL_M, FINE_M, MAX_BUILDING_SHARE, PAD, SUBCELLS, GridSpec, ray_distances
+from .surfaces import (
+    CROWN_BASE_M,
+    DEFAULT_SURFACE,
+    SURFACES,
+    Canopy,
+    CanopyPatch,
+    GroundPatch,
+)
 from .terrain import Terrain
 
 
@@ -37,6 +45,8 @@ class GeometryField:
         campus_boundary: BaseGeometry,
         buildings: list,
         terrain: Terrain | None = None,
+        ground: list[GroundPatch] | None = None,
+        canopies: list[CanopyPatch] | None = None,
     ):
         self.boundary = to_projected(campus_boundary)
         self.buildings = buildings
@@ -54,6 +64,8 @@ class GeometryField:
 
         self.ground = terrain.sample(self.fine_x, self.fine_y) if terrain else np.zeros(self.fine_x.shape)
         self.solid, self.footprint = self._raise_buildings()
+        self.canopy_top, self.canopy_kind, self.canopy_types = self._grow_canopies(canopies or [])
+        albedo, heating = self._paint_ground(ground or [])
 
         cell_x = west + (np.arange(self.grid.cols) + 0.5) * CELL_M
         cell_y = north - (np.arange(self.grid.rows) + 0.5) * CELL_M
@@ -63,6 +75,13 @@ class GeometryField:
         building_share = 1.0 - open_count
         self.inside = shapely.contains_xy(self.boundary, self.cell_x, self.cell_y)
         self.valid = self.inside & (building_share < MAX_BUILDING_SHARE)
+
+        with np.errstate(invalid="ignore", divide="ignore"):
+            self.albedo = self._to_cells(np.where(open_ground, albedo[self.window], 0)) / open_count
+            self.heating = self._to_cells(np.where(open_ground, heating[self.window], 0)) / open_count
+        self.canopy_cover = self._to_cells(
+            (open_ground & (self.canopy_kind[self.window] >= 0)).astype(float)
+        )
 
     # -- building the surface model ------------------------------------------------
 
@@ -90,6 +109,33 @@ class GeometryField:
                 roof = self.ground[box][inside].min() + building.height_m
                 solid[box] = np.where(inside, np.maximum(solid[box], roof), solid[box])
         return solid, footprint
+
+    def _grow_canopies(self, canopies: list[CanopyPatch]):
+        top = np.full(self.fine_x.shape, -np.inf)
+        kind = np.full(self.fine_x.shape, -1, dtype=np.int16)
+        types: list[Canopy] = []
+        for patch in canopies:
+            if patch.canopy not in types:
+                types.append(patch.canopy)
+            index = types.index(patch.canopy)
+            box, inside = self._mask(patch.geometry)
+            inside &= ~self.footprint[box]  # buildings replace the land cover under them
+            crown = self.ground[box] + patch.canopy.height_m
+            higher = inside & (crown > top[box])
+            top[box] = np.where(higher, crown, top[box])
+            kind[box] = np.where(higher, index, kind[box])
+        return top, kind, types
+
+    def _paint_ground(self, ground: list[GroundPatch]) -> tuple[np.ndarray, np.ndarray]:
+        default = SURFACES[DEFAULT_SURFACE]
+        albedo = np.full(self.fine_x.shape, default.albedo)
+        heating = np.full(self.fine_x.shape, default.ground_heating)
+        for patch in ground:
+            surface = SURFACES[patch.surface]
+            box, inside = self._mask(patch.geometry)
+            albedo[box] = np.where(inside, surface.albedo, albedo[box])
+            heating[box] = np.where(inside, surface.ground_heating, heating[box])
+        return albedo, heating
 
     def _to_cells(self, fine: np.ndarray) -> np.ndarray:
         rows, cols = self.grid.rows, self.grid.cols
