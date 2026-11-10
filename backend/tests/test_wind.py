@@ -1,7 +1,5 @@
 """Per-cell wind (services/wind.py) on synthetic scenes where the answer is known."""
 
-import math
-
 import numpy as np
 import pytest
 
@@ -243,7 +241,6 @@ def test_arrows_follow_the_cell_wind_and_skip_buildings() -> None:
     model = scene(buildings=[(square(0, 0, 20), 10.0)])
     field = WindField(model.obstacles)
     points = arrow_features(field, 3.0, 270.0, SUMMER, step_cells=1)
-    k, bearing = field.wind(270.0, leaf_on=True)
     assert len(points) == int(model.valid.sum())
     assert len(points) < int(model.inside.sum())  # the building's cells are left out
     directions = [p["properties"]["direction_deg"] for p in points]
