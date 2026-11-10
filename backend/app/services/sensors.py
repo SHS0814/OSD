@@ -9,9 +9,12 @@ and only clean temperatures go into the averages.
 ``timestamp`` is the measurement time; ``received_at`` is the same instant cut
 to the second, so it is kept only to spot clock trouble.
 
-Not used by the heatmap yet: this is the input to the sensor test
-(scripts/analyze_sensors.py) that decides whether v2 corrects air temperature
-from sensors (docs/04-data-usage-plan.md §5).
+Not used by the heatmap: this is the input to the sensor test
+(scripts/analyze_sensors.py) that asked whether air temperature should be
+corrected per cell from the sensors. On the 2026 test data it should not:
+every device reads 5-10 °C above ASOS at night (its own heat), the offsets
+differ by device, and a sunlight term does not beat a plain offset on a
+held-out sensor.
 """
 
 from __future__ import annotations

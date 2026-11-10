@@ -4,8 +4,10 @@ The space side (geometry_field.py) says how much sun, sky and warm ground
 each output cell has (``GeometryFields``); this turns that and the 청주
 ASOS hour (``WeatherSample``) into the mean radiant temperature and UTCI.
 Air temperature and humidity are the same everywhere; the wind is the ASOS
-speed or, when given, a per-cell field (wind.py). The sensor correction of
-air temperature is v2 (docs/04-data-usage-plan.md).
+speed or, when given, a per-cell field (wind.py). Correcting air temperature
+per cell from the campus sensors was tried and put on hold: their own
+heating and per-device offsets (5-10 °C) are larger than the microclimate
+signal (scripts/analyze_sensors.py, services/sensors.py).
 """
 
 from __future__ import annotations

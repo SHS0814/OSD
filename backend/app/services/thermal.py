@@ -2,8 +2,23 @@
 
 Everything here works element-wise on numpy arrays so one call covers the whole
 campus grid. The mean radiant temperature follows a simplified two-hemisphere
-form of the SOLWEIG model; see docs/04-data-usage-plan.md for the derivation
-and the assumptions behind each constant.
+form of the SOLWEIG model (Lindberg et al. 2008): half of the person faces
+the sky and walls, half the ground,
+
+    S_str = α_k · (f_p · I · s + 0.5 · D · SVF + 0.5 · ρ_g · G_ground)
+          + ε_p · 0.5 · (L↓ + L↑)
+    Tmrt  = (S_str / (ε_p · σ))^¼ − 273.15
+
+    G_ground = I · sin β · s + D · SVF            sunlight on the ground
+    L↓ = SVF · ε_sky · σ · Ta⁴ + (1 − SVF) · ε_w · σ · Ta⁴   walls at air temperature
+    L↑ = ε_g · σ · (Ta + c_g · G_ground)⁴           ground warmed by the sun (common.py)
+
+with I the direct normal and D the diffuse irradiance (Erbs split of the
+ASOS global irradiance), s the sunlit fraction, β the solar altitude and f_p
+the projected area factor of a standing person. The full SOLWEIG model
+resolves six directions and sunlit walls; this form does not. The constants
+below are textbook values; the surface albedo and c_g per land cover are in
+surfaces.py and are assumptions except c_g for grass.
 """
 
 from __future__ import annotations
