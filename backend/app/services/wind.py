@@ -25,6 +25,7 @@ import threading
 from datetime import date
 
 import numpy as np
+from scipy import ndimage
 
 from .common import in_leaf
 from .contracts import ObstacleRaster
@@ -111,15 +112,54 @@ class WindField:
         self.building_h = height
         self.crown_h = obstacles.crown_height
         self.crown_kind = obstacles.crown_kind
+        self.campus_fine = self._campus_mask()  # over the raster's window
         self._cache: dict[tuple[int, bool], np.ndarray] = {}  # S per (sector, leaf_on)
         self._lock = threading.Lock()
 
     # -- geometry ---------------------------------------------------------------
 
+    def _campus_mask(self) -> np.ndarray:
+        return np.repeat(np.repeat(self.obstacles.inside, SUBCELLS, axis=0), SUBCELLS, axis=1)
+
     def blockage(self, leaf_on: bool) -> np.ndarray:
         """Per-fine-pixel aerodynamic blockage of crowns, 1 − τ; 0 where there is no crown."""
         tau = self.obstacles.transmissivity(leaf_on)
         return 1.0 - tau[self.crown_kind]
+
+    def effective_height(self, leaf_on: bool) -> np.ndarray:
+        return np.maximum(self.building_h, self.crown_h * self.blockage(leaf_on))
+
+    def morphometry(self, sector: int, leaf_on: bool) -> dict:
+        """λp, λf, mean height, d and z0 of campus (fine raster inside the boundary).
+
+        A diagnostic for the documentation; K does not use it (module docstring)."""
+        window = self.obstacles.grid.window
+        campus = self.campus_fine
+        h_eff = self.effective_height(leaf_on)[window]
+        weight = np.where(self.building_h[window] > 0, 1.0, self.blockage(leaf_on)[window])
+        weight = np.where(campus, weight, 0.0)
+        area = campus.sum() * FINE_M**2
+        plan = float((weight * FINE_M**2).sum())
+        heights = np.where(campus, np.maximum(self.building_h[window], self.crown_h[window]), 0.0)
+        mean_h = float((weight * heights).sum() / weight.sum()) if weight.sum() else 0.0
+        # Frontal area: rotate so the wind blows down the rows, then add up
+        # every rise in height met along the wind.
+        masked = np.where(campus, h_eff, 0.0)
+        # ndimage.rotate turns counter-clockwise, which brings the bearing the
+        # wind comes from to the top (north) of the array.
+        rotated = ndimage.rotate(masked, sector * SECTOR_DEG, order=0, reshape=True, mode="constant", cval=0.0)
+        rises = np.clip(np.diff(rotated, axis=0, prepend=0.0), 0, None)
+        frontal = float(rises.sum() * FINE_M)
+        plan_index, frontal_index = plan / area, frontal / area
+        d, z0 = macdonald(plan_index, frontal_index, mean_h)
+        return {
+            "plan_index": plan_index,
+            "frontal_index": frontal_index,
+            "mean_height_m": mean_h,
+            "d_m": d,
+            "z0_m": z0,
+            "k_bg_macdonald": background_factor(z0, d),
+        }
 
     def shelter(self, sector: int, leaf_on: bool) -> np.ndarray:
         """S per output cell (NaN where not valid): 1 − strongest upwind wake deficit."""
