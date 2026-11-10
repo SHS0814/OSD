@@ -37,4 +37,11 @@ class HeatmapLayer(private val style: Style) {
     fun setVisible(visible: Boolean) {
         style.getLayer(MapStyle.HEATMAP_LAYER)?.setProperties(visibleIf(visible))
     }
+
+    // 위성사진 위에서는 나무·지붕이 비쳐 보이도록 더 투명하게
+    fun setOverSatellite(overSatellite: Boolean) {
+        style.getLayer(MapStyle.HEATMAP_LAYER)?.setProperties(
+            rasterOpacity(if (overSatellite) MapStyle.HEATMAP_OPACITY_ON_SATELLITE else MapStyle.HEATMAP_OPACITY)
+        )
+    }
 }
