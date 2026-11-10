@@ -22,7 +22,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import shapely
+from shapely.geometry import Point
 from shapely.geometry.base import BaseGeometry
+
+from .geometry import to_projected
+from .grid import CELL_M, GridSpec
 
 TIMEZONE = "Asia/Seoul"
 
@@ -40,6 +44,9 @@ MOVED_M = 20.0
 # and pins at 65000 ppm when it fails; neither is a measurement.
 CO2_FLOOR_PPM = 400
 CO2_SATURATED_PPM = 65000
+# A resampled bin needs at least this share of the expected readings.
+MIN_COVERAGE = 0.5
+READING_INTERVAL_S = 10.0
 
 COLUMNS = ["sensor", "mac", "time", "received_at", "temp", "co2", "lat", "lon"]
 
@@ -154,3 +161,56 @@ def flag_counts(flagged: pd.DataFrame) -> pd.DataFrame:
     table.insert(0, "readings", flagged.groupby("sensor").size())
     table["temp_ok_pct"] = (flagged.groupby("sensor")["temp_ok"].mean() * 100).round(1)
     return table.fillna(0)
+
+
+def resample(flagged: pd.DataFrame, freq: str = "10min", label: str = "left") -> pd.DataFrame:
+    """Clean temperature per sensor and bin: median, reading count, coverage.
+
+    ``label="right"`` matches ASOS hours, which are stamped at the end of the hour.
+    Bins with less than MIN_COVERAGE of the expected readings are dropped.
+    """
+    clean = flagged[flagged["temp_ok"]].set_index("time")
+    expected = pd.Timedelta(freq).total_seconds() / READING_INTERVAL_S
+    parts = []
+    for sensor, group in clean.groupby("sensor"):
+        bins = group["temp"].resample(freq, label=label, closed=label).agg(["median", "count"])
+        bins = bins.rename(columns={"median": "temp"})
+        bins["coverage"] = bins["count"] / expected
+        bins = bins[bins["coverage"] >= MIN_COVERAGE]
+        bins.insert(0, "sensor", sensor)
+        parts.append(bins)
+    return pd.concat(parts).reset_index() if parts else pd.DataFrame(columns=["time", "sensor", "temp"])
+
+
+def sites(flagged: pd.DataFrame) -> pd.DataFrame:
+    """One row per sensor: identity, usual position, period and data quality."""
+    rows = []
+    for sensor, group in flagged.groupby("sensor"):
+        lon, lat = _usual_position(group)
+        gaps = group["time"].diff().dt.total_seconds()
+        rows.append(
+            {
+                "sensor": sensor,
+                "mac": group["mac"].mode().iat[0],
+                "lat": lat,
+                "lon": lon,
+                "start": group["time"].min(),
+                "end": group["time"].max(),
+                "readings": len(group),
+                "gaps_over_1min": int((gaps > 60).sum()),
+                "longest_gap_min": round(float(gaps.max() / 60), 1) if len(group) > 1 else 0.0,
+                "temp_ok_pct": round(float(group["temp_ok"].mean() * 100), 1),
+                "co2_ok_pct": round(float(group["co2_ok"].mean() * 100), 1),
+            }
+        )
+    return pd.DataFrame(rows).set_index("sensor")
+
+
+def grid_cell(grid: GridSpec, lon: float, lat: float) -> tuple[int, int] | None:
+    """(row, col) of the microclimate output cell holding a WGS84 point, or None outside the grid."""
+    point = to_projected(Point(lon, lat))
+    col = int((point.x - grid.origin_x) // CELL_M)
+    row = int((grid.origin_y - point.y) // CELL_M)
+    if 0 <= row < grid.rows and 0 <= col < grid.cols:
+        return row, col
+    return None

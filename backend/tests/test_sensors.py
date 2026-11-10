@@ -5,9 +5,11 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
-from shapely.geometry import box
+from shapely.geometry import Point, box
 
 from app.services import sensors
+from app.services.geometry import to_projected
+from app.services.grid import CELL_M, GridSpec
 
 HEADER = "﻿received_at,sensor,mac,temp,co2,timestamp,lat,lon,sender\n"
 START = 1790521200.0  # 2026-09-28 00:00:00 KST
@@ -105,3 +107,38 @@ def test_co2_faults_do_not_spoil_temperature(tmp_path: Path) -> None:
     assert flags_of(flagged, 65.0) == "co2_saturated;"
     assert flagged["temp_ok"].all()
     assert flagged["co2_ok"].sum() == 5
+
+
+def test_counts_and_sites(tmp_path: Path) -> None:
+    rows = steady(20) + [(95.0, 85.0, sensors.CO2_FLOOR_PPM)]
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", rows)))
+    counts = sensors.flag_counts(flagged)
+    assert counts.loc["sensor 20", "readings"] == 21
+    assert counts.loc["sensor 20", "range"] == 1
+    assert counts.loc["sensor 20", "co2_floor"] == 1
+    site = sensors.sites(flagged).loc["sensor 20"]
+    assert (site["lat"], site["lon"]) == (LAT, LON)
+    assert site["readings"] == 21
+
+
+def test_resample_drops_thin_bins_and_labels_like_asos(tmp_path: Path) -> None:
+    # A full first hour (360 readings) and 10 readings in the second.
+    rows = steady(360) + [(3600.0 + i * 10.0, 30.0, 800) for i in range(10)]
+    flagged = sensors.flag_quality(sensors.load_readings(write_csv(tmp_path / "s.csv", rows)))
+    hourly = sensors.resample(flagged, "1h", label="right")
+    # closed="right": the lone reading at exactly 00:00 makes a thin bin ending
+    # 00:00, and the 10 readings after 01:00 a thin one ending 02:00; both go.
+    assert len(hourly) == 1
+    first = hourly.iloc[0]
+    assert first["time"] == pd.Timestamp("2026-09-28 01:00", tz="Asia/Seoul")
+    assert first["temp"] == pytest.approx(20.0, abs=0.02)
+    assert first["coverage"] > 0.9
+
+
+def test_grid_cell_finds_the_cell() -> None:
+    grid = GridSpec.covering(to_projected(box(LON - 0.001, LAT - 0.001, LON + 0.001, LAT + 0.001)).bounds)
+    row, col = sensors.grid_cell(grid, LON, LAT)
+    point = to_projected(Point(LON, LAT))
+    assert abs(point.x - (grid.origin_x + (col + 0.5) * CELL_M)) <= CELL_M / 2
+    assert abs(point.y - (grid.origin_y - (row + 0.5) * CELL_M)) <= CELL_M / 2
+    assert sensors.grid_cell(grid, LON + 1, LAT) is None
