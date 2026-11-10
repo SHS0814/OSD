@@ -374,7 +374,7 @@ def figures(records: list[dict]) -> None:
 
     plt.rcParams["font.family"] = ["AppleGothic", "sans-serif"]
     plt.rcParams["axes.unicode_minus"] = False
-    model, field = G["model"], G["fields"]["K"]
+    field = G["fields"]["K"]
 
     fig, axes = plt.subplots(1, 2, figsize=(11, 5.4), constrained_layout=True)
     for ax, leaf, title in ((axes[0], True, "서풍(270°), 잎 있음"), (axes[1], False, "서풍(270°), 잎 없음")):
