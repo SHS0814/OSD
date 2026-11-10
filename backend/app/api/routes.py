@@ -1,14 +1,16 @@
 from datetime import date, datetime, time, timedelta
 from typing import Annotated
 
+import numpy as np
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from shapely.geometry import mapping
 
 from app.config import settings
-from app.services import vworld_tiles
+from app.services import routing, vworld_tiles, wind
 from app.services.geometry import to_wgs84
+from app.services.grid import CELL_M
 from app.services.shadow import building_shadows
-from app.services.solar import calculate_solar_position, parse_requested_datetime
+from app.services.solar import SEOUL_TZ, calculate_solar_position, localize_datetime, parse_requested_datetime
 from app.services.weather import WeatherUnavailable
 
 
@@ -38,6 +40,70 @@ def buildings(request: Request) -> dict:
             for building in records
         ]
     )
+
+
+@router.get("/api/sensors")
+def sensor_sites(request: Request) -> dict:
+    """Where the campus environment sensors stand; positions only, no readings."""
+    return request.app.state.sensors
+
+
+@router.get("/api/route")
+def walking_route(
+    request: Request,
+    from_lat: Annotated[float, Query(ge=-90, le=90)],
+    from_lon: Annotated[float, Query(ge=-180, le=180)],
+    to_lat: Annotated[float, Query(ge=-90, le=90)],
+    to_lon: Annotated[float, Query(ge=-180, le=180)],
+    datetime_value: Annotated[datetime | None, Query(alias="datetime")] = None,
+    date_value: Annotated[date | None, Query(alias="date")] = None,
+    time_value: Annotated[time | None, Query(alias="time")] = None,
+) -> dict:
+    """Shortest, balanced and coolest walking routes for one instant.
+
+    Balanced and coolest are left out when they coincide with a route already
+    given, when the weather is comfortable everywhere, and at night, when sun
+    and shade make no difference. ``mode`` says what the alternatives seek:
+    "heat" - shade (그늘길), "cold" - sun (햇볕길), "none" - only the shortest.
+    """
+    network = request.app.state.walk_network
+    if network is None:
+        raise HTTPException(status_code=503, detail="walk network is not built (scripts/build_walk_network.py)")
+    try:
+        when = parse_requested_datetime(datetime_value, date_value, time_value)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    try:
+        weather = request.app.state.weather.at(when)
+    except WeatherUnavailable as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    model = request.app.state.microclimate
+    solar = calculate_solar_position(when, settings.campus_latitude, settings.campus_longitude)
+    fields = model.fields(when, solar, weather, wind_direction_deg=weather.wind_direction_deg)
+    utci = network.sample(model.fill_under_buildings(fields.utci), model.grid)
+    sunlit = network.sample(model.fill_under_buildings(fields.sunlit), model.grid)
+    try:
+        start, end = network.snap(from_lon, from_lat), network.snap(to_lon, to_lat)
+        heat_base = float(np.nanpercentile(fields.utci, routing.SHADE_PERCENTILE))
+        cold_base = float(np.nanpercentile(fields.utci, routing.SUN_PERCENTILE))
+        found = network.routes(
+            start, end, utci, heat_base=heat_base, cold_base=cold_base, daylight=solar.altitude > 0
+        )
+    except routing.RouteUnavailable as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    shortest_m = float(network.length[found[0].edges].sum())
+    return {
+        "datetime": when.isoformat(),
+        "timezone": "Asia/Seoul",
+        "solar": _solar_payload(solar),
+        "air_temp_c": round(weather.air_temp_c, 1),
+        "mode": found[0].mode,
+        "routes": feature_collection([network.describe(route, utci, sunlit, shortest_m) for route in found]),
+        "note": "보행 속도 1.2 m/s 기준. mode가 heat이면 그늘길, cold이면 햇볕길이며, "
+        "coolest는 최단 경로보다 최대 30%, balanced는 15%까지 길어질 수 있습니다. "
+        "none이면 쾌적하거나 밤이라 최단 경로만 줍니다.",
+    }
 
 
 @router.get("/api/tiles/satellite/{z}/{x}/{y}.jpeg")
@@ -123,6 +189,35 @@ def weather_period(request: Request) -> dict:
     }
 
 
+@router.get("/api/weather")
+def weather_now(
+    request: Request,
+    datetime_value: Annotated[datetime | None, Query(alias="datetime")] = None,
+) -> dict:
+    """ASOS weather for one instant (default: now), for the app's weather card.
+
+    When "now" is past what has been observed (no API허브 key, or the hour is
+    not reported yet), the latest observation is returned and ``latest`` says so.
+    """
+    store = request.app.state.weather
+    when = localize_datetime(datetime_value) if datetime_value is not None else datetime.now(SEOUL_TZ)
+    latest = False
+    try:
+        weather = store.at(when)
+    except WeatherUnavailable:
+        if datetime_value is not None:
+            raise HTTPException(status_code=404, detail=f"no observation around {when.isoformat()}")
+        when, latest = store.latest, True
+        weather = store.at(when)
+    solar = calculate_solar_position(when, settings.campus_latitude, settings.campus_longitude)
+    return {
+        "datetime": when.isoformat(),
+        "latest": latest,
+        "solar": _solar_payload(solar),
+        "weather": weather.as_dict(),
+    }
+
+
 @router.get("/api/microclimate")
 def microclimate(
     request: Request,
@@ -142,13 +237,65 @@ def microclimate(
         raise HTTPException(status_code=404, detail=str(error)) from error
 
     solar = calculate_solar_position(when, settings.campus_latitude, settings.campus_longitude)
-    result = request.app.state.microclimate.compute(when, solar, weather)
+    result = request.app.state.microclimate.compute(
+        when, solar, weather, wind_direction_deg=weather.wind_direction_deg
+    )
     return {
         "datetime": when.isoformat(),
         "timezone": "Asia/Seoul",
         "solar": _solar_payload(solar),
         "weather": weather.as_dict(),
         **result,
-        "note": "추정치입니다. 그림자·천공률·지표면을 반영하고, 기온·습도·바람은 캠퍼스 전체에 "
-        "같은 기상청 값을 씁니다.",
+        "note": "추정치입니다. 그림자·천공률·지표면을 반영하고, 기온·습도는 캠퍼스 전체에 같은 기상청 값을, "
+        "바람은 기상청 값에 칸별 풍속을 추정해(바람 위쪽 차폐 + 건물을 돌아가는 2D 질량보존 흐름; "
+        "건물 위로 넘는 흐름·후류 역류 미반영, 풍속계 검증 없음) 씁니다.",
+    }
+
+
+@router.get("/api/wind")
+def wind_arrows(
+    request: Request,
+    datetime_value: Annotated[datetime | None, Query(alias="datetime")] = None,
+    date_value: Annotated[date | None, Query(alias="date")] = None,
+    time_value: Annotated[time | None, Query(alias="time")] = None,
+    step_m: Annotated[float, Query(ge=8)] = 24.0,
+) -> dict:
+    """Per-cell wind as points for drawing arrows, every ``step_m`` over open campus ground.
+
+    Each point's ``direction_deg`` is where the wind blows *from* at that cell
+    (ASOS convention, north 360) and ``factor`` its speed over the ASOS speed;
+    an arrow points the other way. Both are estimates: a 2D mass-consistent
+    flow round the buildings plus upwind sheltering, without flow over the
+    roofs or reversed flow in a wake, and not checked against an anemometer.
+    No point is placed on a cell that is mostly building. ``wind`` holds the
+    ASOS values. No points when the wind field is off or the wind is calm.
+    """
+    try:
+        when = parse_requested_datetime(datetime_value, date_value, time_value)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    try:
+        weather = request.app.state.weather.at(when)
+    except WeatherUnavailable as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    model = request.app.state.microclimate
+    field = model.wind_field
+    direction = weather.wind_direction_deg
+    features = []
+    if field is not None and direction is not None:
+        step_cells = max(1, round(step_m / CELL_M))
+        features = wind.arrow_features(field, weather.wind_ms, direction, when.date(), step_cells)
+    return {
+        "type": "FeatureCollection",
+        "datetime": when.isoformat(),
+        "timezone": "Asia/Seoul",
+        "wind": {
+            "asos_speed_ms": round(weather.wind_ms, 2),
+            "direction_deg": None if direction is None else round(direction, 1),
+            "wind_field": field is not None,
+        },
+        "features": features,
+        "note": "칸별 풍향·풍속은 2D 질량보존 흐름(건물을 돌아감)과 바람 위쪽 차폐로 추정한 값입니다. "
+        "건물 위로 넘는 흐름·후류의 역류는 반영하지 않았고 풍속계로 검증하지 않았습니다.",
     }
