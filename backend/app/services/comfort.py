@@ -22,6 +22,7 @@ from .thermal import (
     relative_humidity,
     split_irradiance,
     utci,
+    utci_category,
 )
 
 
@@ -64,3 +65,26 @@ def comfort_fields(
         mrt=np.where(geometry.valid, mrt, np.nan),
         utci=np.where(geometry.valid, comfort, np.nan),
     )
+
+
+def summary(fields: Fields, valid: np.ndarray) -> dict:
+    """Campus statistics of one instant; cells outside ``valid`` do not count."""
+    comfort, mrt, sunlit = fields.utci, fields.mrt, fields.sunlit
+    values = comfort[np.isfinite(comfort)]
+    categories: dict[str, int] = {}
+    for value in values:
+        code, _ = utci_category(float(value))
+        categories[code] = categories.get(code, 0) + 1
+    return {
+        "cell_count": int(valid.sum()),
+        "utci_min": _round(values.min()) if values.size else None,
+        "utci_mean": _round(values.mean()) if values.size else None,
+        "utci_max": _round(values.max()) if values.size else None,
+        "mrt_mean": _round(np.nanmean(mrt)) if values.size else None,
+        "sunlit_share": _round(np.nanmean(sunlit), 3),
+        "categories": categories,
+    }
+
+
+def _round(value: float, digits: int = 1) -> float:
+    return round(float(value), digits)
