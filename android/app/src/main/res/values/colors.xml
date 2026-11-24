@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="brand">#285943</color>
-    <color name="brand_dark">#173B2C</color>
-    <!-- 지도 설정에서 켜진 아이콘 버튼의 옅은 brand 바탕 -->
-    <color name="brand_tint">#E3EEE8</color>
+    <!--
+      충북대학교 전용색상 CBNU Red (PANTONE 7425C, R183 G38 B84)
+      https://www.chungbuk.ac.kr/www/selectWebSymbol.do?key=601&symbol=8
+      흰 바탕 위 글자·흰 글자 모두 대비 6.1:1 (WCAG AA 통과)
+    -->
+    <color name="brand">#B72654</color>
+    <!-- CBNU Red를 어둡게 한 색 (상태 표시줄 등 colorPrimaryVariant) -->
+    <color name="brand_dark">#8A1C40</color>
+    <!-- 지도 설정에서 켜진 아이콘 버튼의 옅은 CBNU Red 바탕 (brand 아이콘과 대비 5.2:1) -->
+    <color name="brand_tint">#F8E9EE</color>
     <!-- 지도 설정에서 꺼진 아이콘 버튼의 옅은 회색 바탕 -->
     <color name="icon_button_background">#F1F3F4</color>
 
