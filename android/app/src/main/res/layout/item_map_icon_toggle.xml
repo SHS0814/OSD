@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 지도 설정의 켜고 끄는 원형 아이콘 버튼 한 칸. 아이콘·이름·설명은 MapSettingsSheet가 채운다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/CampusShade.PictureOption">
+
+    <!-- 그림 카드(72dp)와 높이를 맞춘다 -->
+    <FrameLayout
+        android:layout_width="64dp"
+        android:layout_height="72dp">
+
+        <ImageView
+            android:id="@+id/icon"
+            style="@style/CampusShade.IconToggle.Circle" />
+
+        <ImageView
+            android:id="@+id/check"
+            style="@style/CampusShade.PictureOption.Check"
+            android:layout_marginTop="6dp" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/label"
+        style="@style/CampusShade.PictureOption.Label" />
+</LinearLayout>

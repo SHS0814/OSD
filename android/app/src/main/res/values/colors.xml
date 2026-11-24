@@ -2,6 +2,10 @@
 <resources>
     <color name="brand">#285943</color>
     <color name="brand_dark">#173B2C</color>
+    <!-- 지도 설정에서 켜진 아이콘 버튼의 옅은 brand 바탕 -->
+    <color name="brand_tint">#E3EEE8</color>
+    <!-- 지도 설정에서 꺼진 아이콘 버튼의 옅은 회색 바탕 -->
+    <color name="icon_button_background">#F1F3F4</color>
 
     <!-- 지도 위에 떠 있는 카드·버튼 -->
     <color name="card_background">#FFFFFF</color>

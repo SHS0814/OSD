@@ -1,108 +1,176 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  지도 설정: 위 줄은 보기(3D/2D)·배경 지도(위성/일반), 아래 줄은 표시(체감온도/그림자)를
+  미리보기 그림 카드로, 바람 화살표·센서 위치는 켜고 끄는 원형 아이콘 버튼으로 고른다.
+-->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingHorizontal="20dp"
-    android:paddingTop="16dp"
-    android:paddingBottom="20dp">
+    android:paddingTop="20dp"
+    android:paddingBottom="24dp">
 
     <TextView
         style="@style/CampusShade.SheetTitle"
         android:text="@string/map_settings" />
 
-    <TextView
-        style="@style/CampusShade.SheetLabel"
-        android:text="@string/map_settings_view" />
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
 
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/viewModeGroup"
-        style="@style/CampusShade.ToggleGroup">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/viewMode3d"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/view_3d" />
+            <TextView
+                style="@style/CampusShade.SheetLabel"
+                android:text="@string/map_settings_view" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/viewMode2d"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/view_2d" />
-    </com.google.android.material.button.MaterialButtonToggleGroup>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
-    <TextView
-        style="@style/CampusShade.SheetLabel"
-        android:text="@string/map_settings_base" />
+                <include
+                    android:id="@+id/viewMode3d"
+                    layout="@layout/item_map_picture_option"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1" />
 
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/baseMapGroup"
-        style="@style/CampusShade.ToggleGroup">
+                <include
+                    android:id="@+id/viewMode2d"
+                    layout="@layout/item_map_picture_option"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/baseMapSatellite"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/show_satellite" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/baseMapNormal"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/show_basemap" />
-    </com.google.android.material.button.MaterialButtonToggleGroup>
+            <TextView
+                style="@style/CampusShade.SheetLabel"
+                android:text="@string/map_settings_base" />
 
-    <TextView
-        style="@style/CampusShade.SheetLabel"
-        android:text="@string/map_settings_layer" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/layerModeGroup"
-        style="@style/CampusShade.ToggleGroup">
+                <include
+                    android:id="@+id/baseMapSatellite"
+                    layout="@layout/item_map_picture_option"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/layerHeatmap"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/show_heatmap" />
+                <include
+                    android:id="@+id/baseMapNormal"
+                    layout="@layout/item_map_picture_option"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/layerShadow"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/show_shadows" />
-    </com.google.android.material.button.MaterialButtonToggleGroup>
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:baselineAligned="false"
+        android:orientation="horizontal">
 
-    <TextView
-        style="@style/CampusShade.SheetLabel"
-        android:text="@string/map_settings_wind" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/windGroup"
-        style="@style/CampusShade.ToggleGroup">
+            <TextView
+                style="@style/CampusShade.SheetLabel"
+                android:text="@string/map_settings_layer" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/windOff"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/wind_off" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/windOn"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/wind_on" />
-    </com.google.android.material.button.MaterialButtonToggleGroup>
+                <include
+                    android:id="@+id/layerHeatmap"
+                    layout="@layout/item_map_picture_option"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1" />
 
-    <TextView
-        style="@style/CampusShade.SheetLabel"
-        android:text="@string/map_settings_sensors" />
+                <include
+                    android:id="@+id/layerShadow"
+                    layout="@layout/item_map_picture_option"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
 
-    <com.google.android.material.button.MaterialButtonToggleGroup
-        android:id="@+id/sensorGroup"
-        style="@style/CampusShade.ToggleGroup">
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/sensorsOff"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/sensors_off" />
+            <TextView
+                style="@style/CampusShade.SheetLabel"
+                android:text="@string/map_settings_overlay" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/sensorsOn"
-            style="@style/CampusShade.ToggleButton"
-            android:text="@string/sensors_on" />
-    </com.google.android.material.button.MaterialButtonToggleGroup>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:baselineAligned="false"
+                android:orientation="horizontal">
+
+                <include
+                    android:id="@+id/windToggle"
+                    layout="@layout/item_map_icon_toggle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1" />
+
+                <include
+                    android:id="@+id/sensorsToggle"
+                    layout="@layout/item_map_icon_toggle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:layout_weight="1" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
 </LinearLayout>

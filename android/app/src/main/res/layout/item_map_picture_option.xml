@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 지도 설정의 그림 카드 한 칸. 그림·이름·설명은 MapSettingsSheet가 채운다. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    style="@style/CampusShade.PictureOption">
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/frame"
+        style="@style/CampusShade.PictureOption.Frame">
+
+        <ImageView
+            android:id="@+id/picture"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:importantForAccessibility="no"
+            android:scaleType="centerCrop" />
+
+        <ImageView
+            android:id="@+id/check"
+            style="@style/CampusShade.PictureOption.Check"
+            android:layout_margin="4dp" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <TextView
+        android:id="@+id/label"
+        style="@style/CampusShade.PictureOption.Label" />
+</LinearLayout>

@@ -43,17 +43,73 @@
         <item name="android:textSize">13sp</item>
     </style>
 
-    <style name="CampusShade.ToggleGroup" parent="">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">6dp</item>
-        <item name="singleSelection">true</item>
-        <item name="selectionRequired">true</item>
+    <!-- 지도 설정 시트: 위 두 모서리가 둥근 흰 시트 -->
+    <style name="ThemeOverlay.CampusShade.RoundedSheet" parent="ThemeOverlay.MaterialComponents.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/CampusShade.RoundedSheet</item>
     </style>
 
-    <style name="CampusShade.ToggleButton" parent="Widget.MaterialComponents.Button.OutlinedButton">
+    <style name="CampusShade.RoundedSheet" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="backgroundTint">@color/card_background</item>
+        <item name="shapeAppearanceOverlay">@style/CampusShade.RoundedSheet.Shape</item>
+    </style>
+
+    <style name="CampusShade.RoundedSheet.Shape" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">16dp</item>
+        <item name="cornerSizeTopRight">16dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+
+    <!-- 지도 설정의 그림 카드 한 칸: 위에 미리보기, 아래에 이름 -->
+    <style name="CampusShade.PictureOption" parent="">
         <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">wrap_content</item>
         <item name="android:layout_weight">1</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:gravity">center_horizontal</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">?attr/selectableItemBackground</item>
+        <item name="android:paddingBottom">4dp</item>
+    </style>
+
+    <style name="CampusShade.PictureOption.Frame" parent="Widget.MaterialComponents.CardView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">72dp</item>
+        <item name="cardCornerRadius">12dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/divider</item>
+    </style>
+
+    <style name="CampusShade.PictureOption.Label" parent="">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">6dp</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <!-- 체크 표시는 카드 오른쪽 위 귀퉁이 -->
+    <style name="CampusShade.PictureOption.Check" parent="">
+        <item name="android:layout_width">20dp</item>
+        <item name="android:layout_height">20dp</item>
+        <item name="android:layout_gravity">top|end</item>
+        <item name="android:src">@drawable/ic_check_badge</item>
+        <item name="android:importantForAccessibility">no</item>
+        <item name="android:visibility">gone</item>
+    </style>
+
+    <!-- 지도 설정의 켜고 끄는 원형 아이콘 버튼 -->
+    <style name="CampusShade.IconToggle.Circle" parent="">
+        <item name="android:layout_width">52dp</item>
+        <item name="android:layout_height">52dp</item>
+        <item name="android:layout_gravity">center</item>
+        <item name="android:padding">14dp</item>
+        <item name="android:background">@drawable/bg_map_settings_icon</item>
+        <item name="android:importantForAccessibility">no</item>
     </style>
 </resources>

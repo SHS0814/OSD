@@ -38,12 +38,15 @@
     <string name="show_basemap">일반</string>
     <string name="show_heatmap">체감온도</string>
     <string name="show_shadows">그림자</string>
-    <string name="map_settings_wind">바람</string>
-    <string name="wind_off">끔</string>
+    <string name="map_settings_overlay">겹쳐 보기</string>
     <string name="wind_on">바람 화살표</string>
-    <string name="map_settings_sensors">센서</string>
-    <string name="sensors_off">숨김</string>
     <string name="sensors_on">센서 위치</string>
+    <!-- 화면 읽기: '보기 3D', '배경 지도 위성' 처럼 묶음 이름과 함께 읽는다 -->
+    <string name="map_settings_choice">%1$s %2$s</string>
+    <string name="state_selected">선택됨</string>
+    <string name="state_not_selected">선택 안 됨</string>
+    <string name="state_on">켜짐</string>
+    <string name="state_off">꺼짐</string>
 
     <!-- 센서 정보 -->
     <string name="sensor_subtitle">캠퍼스 환경 센서</string>
